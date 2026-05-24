@@ -20,8 +20,11 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <gtk/gtk.h>
+
 #include "client_state.h"
 #include "socket_client.h"
+#include "poker_gui.h"
 
 /* Default server host if the user does not provide --host. */
 #define DEFAULT_HOST "localhost"
@@ -29,8 +32,7 @@
 /* Default project port. */
 #define DEFAULT_PORT 10010
 
-/* Maximum size for user input typed into the terminal. */
-#define INPUT_SIZE 256
+static ClientState g_client;
 
 /*
  * Converts a phase string from the server into a GamePhase enum.
@@ -203,35 +205,37 @@ static void parse_stat_message(ClientState *client, const char *message)
         return;
     }
 
-    /*
-     * Read the values from the STAT message.
-     *
-     * %63[^;] reads the phase text until the semicolon.
-     */
     int matched = sscanf(
         message,
         "STAT:-1:phase=%63[^;];players=%d;pot=%d;turn=%d;community=%d",
-        phase_text,
-        &players,
-        &pot,
-        &turn,
-        &community);
-
-    /*
-     * If sscanf found all five expected values, update ClientState.
-     */
+        phase_text, &players, &pot, &turn, &community);
+ 
     if (matched == 5)
     {
-        client->phase = phase_from_string(phase_text);
-        client->player_count = players;
-        client->pot = pot;
-        client->current_turn = turn;
+        client->phase          = phase_from_string(phase_text);
+        client->player_count   = players;
+        client->pot            = pot;
+        client->current_turn   = turn;
         client->community_count = community;
+ 
+        // update GUI pot
+        poker_gui_set_pot(pot);
+ 
+        // update GUI status — show whose turn it is
+        if (turn == client->seat)
+            poker_gui_set_status("Your turn!");
+        else
+        {
+            char buf[64];
+            snprintf(buf, sizeof buf, "Waiting for seat %d...", turn);
+            poker_gui_set_status(buf);
+        }
+ 
         set_client_status(client, "Received public game state.");
     }
     else
     {
-        set_client_status(client, "Could not parse game state.");
+        poker_gui_set_status("Could not parse game state.");
     }
 }
 
@@ -280,20 +284,27 @@ static void parse_hand_message(ClientState *client, const char *message)
     /*
      * If parsing worked, update the client's ability and status.
      */
-    if (matched == 4)
+     if (matched == 4)
     {
-        client->seat = seat;
+        client->seat    = seat;
         client->ability = ability_from_string(ability_text);
-
-        printf("Private card 1: %s\n", card1_text);
-        printf("Private card 2: %s\n", card2_text);
-        printf("Ability card: %s\n", ability_text);
-
+ 
+        // build asset paths and show cards in GUI
+        char path1[128], path2[128];
+        snprintf(path1, sizeof path1, "assets/%s.png", card1_text);
+        snprintf(path2, sizeof path2, "assets/%s.png", card2_text);
+        poker_gui_set_my_card(0, path1);
+        poker_gui_set_my_card(1, path2);
+ 
+        // update stack display
+        poker_gui_set_stack(client->pot);
+ 
         set_client_status(client, "Received private hand.");
+        poker_gui_set_status("Cards dealt. Good luck!");
     }
     else
     {
-        set_client_status(client, "Could not parse private hand.");
+        poker_gui_set_status("Could not parse private hand.");
     }
 }
 
@@ -331,6 +342,9 @@ static void handle_single_server_message(ClientState *client, const char *messag
         {
             client->seat = seat;
             set_client_status(client, "Logged in and seated.");
+            char buf[64];
+            snprintf(buf, sizeof buf, "Seated at seat %d.", seat);
+            poker_gui_set_status(buf);
         }
     }
 
@@ -355,6 +369,9 @@ static void handle_single_server_message(ClientState *client, const char *messag
      */
     else if (strncmp(message, "ERROR:", 6) == 0)
     {
+        const char *payload = strchr(message + 6, ':');
+        if (payload) payload++;
+        poker_gui_set_status(payload ? payload : "Server error.");
         set_client_status(client, "Server returned an error.");
     }
 
@@ -412,267 +429,88 @@ static void handle_server_buffer(ClientState *client, const char *buffer)
 }
 
 /*
- * Receives one buffer from the server and processes all messages inside it.
+ * on_server_readable
  *
- * Returns:
- * 1 if messages were received
- * 0 if server disconnected
- * -1 if an error occurred
+ * GTK calls this whenever the server socket has data.
  */
-static int receive_and_handle_server_messages(ClientState *client)
+static gboolean on_server_readable(GIOChannel *channel, GIOCondition cond, gpointer data)
 {
-    /* Buffer for raw server data. */
+    (void)cond; (void)data;
+ 
     char buffer[CLIENT_BUFFER_SIZE];
-
-    /* Read data from server. */
-    int bytes_read = receive_from_server(client->socket_fd, buffer, sizeof(buffer));
-
-    /* If server sent data, handle it. */
-    if (bytes_read > 0)
-    {
-        handle_server_buffer(client, buffer);
-        return 1;
-    }
-
-    /* If bytes_read is 0, the server disconnected. */
-    if (bytes_read == 0)
+    memset(buffer, 0, sizeof buffer);
+ 
+    int bytes = receive_from_server(g_client.socket_fd, buffer, sizeof buffer);
+ 
+    if (bytes <= 0)
     {
         printf("Server disconnected.\n");
-        return 0;
+        poker_gui_set_status("Disconnected from server.");
+        close(g_client.socket_fd);
+        g_client.connected = 0;
+        g_io_channel_unref(channel);
+        return FALSE; // stop watching
     }
-
-    /* Otherwise, an error occurred. */
-    return -1;
+ 
+    handle_server_buffer(&g_client, buffer);
+    return TRUE; // keep watching
 }
 
 /*
- * Prints the available terminal commands.
- */
-static void print_help(void)
-{
-    printf("\nCommands:\n");
-    printf("  start              Start a new hand\n");
-    printf("  check              Send CHECK action\n");
-    printf("  call               Send CALL action\n");
-    printf("  fold               Send FOLD action\n");
-    printf("  raise <amount>     Send RAISE action\n");
-    printf("  state              Print local client state\n");
-    printf("  help               Show commands\n");
-    printf("  quit               Disconnect\n\n");
-}
-
-/*
- * Converts user input into a message that follows the server protocol.
- */
-static void build_action_message(
-    const ClientState *client,
-    const char *input,
-    char *message,
-    int message_size)
-{
-    /* Make sure inputs are valid. */
-    if (client == NULL || input == NULL || message == NULL)
-    {
-        return;
-    }
-
-    /* Clear output message first. */
-    message[0] = '\0';
-
-    /* Start a new hand. */
-    if (strcmp(input, "start") == 0)
-    {
-        snprintf(message, message_size, "START:%d:\n", client->seat);
-    }
-
-    /* Send CHECK action. */
-    else if (strcmp(input, "check") == 0)
-    {
-        snprintf(message, message_size, "ACTN:%d:CHECK\n", client->seat);
-    }
-
-    /* Send CALL action. */
-    else if (strcmp(input, "call") == 0)
-    {
-        snprintf(message, message_size, "ACTN:%d:CALL\n", client->seat);
-    }
-
-    /* Send FOLD action. */
-    else if (strcmp(input, "fold") == 0)
-    {
-        snprintf(message, message_size, "ACTN:%d:FOLD\n", client->seat);
-    }
-
-    /* Send RAISE action. */
-    else if (strncmp(input, "raise", 5) == 0)
-    {
-        int amount = 0;
-
-        /* Extract the raise amount. */
-        if (sscanf(input, "raise %d", &amount) == 1)
-        {
-            snprintf(message, message_size, "RAISE:%d:%d\n", client->seat, amount);
-        }
-        else
-        {
-            printf("Usage: raise <amount>\n");
-        }
-    }
-
-    /* Send QUIT command. */
-    else if (strcmp(input, "quit") == 0)
-    {
-        snprintf(message, message_size, "QUIT:%d:\n", client->seat);
-    }
-}
-
-/*
- * Main program entry point.
+ * main
+ *
+ * 1. Init GTK.
+ * 2. Parse args, connect to server.
+ * 3. Send LOGIN.
+ * 4. Register socket with g_io_add_watch.
+ * 5. Launch poker GUI window.
+ * 6. gtk_main() handles everything from here.
  */
 int main(int argc, char *argv[])
 {
-    /* Stores local client information. */
-    ClientState client;
-
-    /* Server host name or IP address. */
+    gtk_init(&argc, &argv);
+ 
     char host[128];
-
-    /* Player display name. */
     char name[CLIENT_NAME_LEN];
-
-    /* Stores user terminal input. */
-    char input[INPUT_SIZE];
-
-    /* Stores outgoing message to server. */
-    char outgoing[CLIENT_BUFFER_SIZE];
-
-    /* Server port number. */
-    int port;
-
-    /* Initialize local client state. */
-    init_client_state(&client);
-
-    /* Parse command-line options. */
-    parse_client_args(
-        argc,
-        argv,
-        host,
-        sizeof(host),
-        &port,
-        name,
-        sizeof(name));
-
-    /* Save player name in client state. */
-    set_client_name(&client, name);
-
-    /* Print connection details. */
-    printf("Connecting to server...\n");
-    printf("Host: %s\n", host);
-    printf("Port: %d\n", port);
-    printf("Name: %s\n", name);
-
-    /* Connect to server. */
-    client.socket_fd = connect_to_server(host, port);
-
-    /* Stop if connection fails. */
-    if (client.socket_fd < 0)
+    int  port;
+ 
+    init_client_state(&g_client);
+    parse_client_args(argc, argv, host, sizeof host, &port, name, sizeof name);
+    set_client_name(&g_client, name);
+ 
+    printf("Connecting to %s:%d as %s...\n", host, port, name);
+ 
+    g_client.socket_fd = connect_to_server(host, port);
+    if (g_client.socket_fd < 0)
     {
         fprintf(stderr, "Could not connect to server.\n");
         return 1;
     }
-
-    /* Mark client as connected. */
-    client.connected = 1;
-    set_client_status(&client, "Connected to server.");
-
-    /*
-     * Receive initial INFO message.
-     */
-    receive_and_handle_server_messages(&client);
-
-    /*
-     * Send LOGIN message.
-     */
-    snprintf(outgoing, sizeof(outgoing), "LOGIN:-1:%s\n", client.player_name);
-    send_to_server(client.socket_fd, outgoing);
-
-    /*
-     * Receive SEAT response and possibly STAT response.
-     */
-    receive_and_handle_server_messages(&client);
-
-    /* Show available commands. */
-    print_help();
-
-    /*
-     * Main input loop.
-     */
-    while (1)
-    {
-        /* Print prompt. */
-        printf("poker> ");
-
-        /* Read input from user. */
-        if (fgets(input, sizeof(input), stdin) == NULL)
-        {
-            break;
-        }
-
-        /* Remove newline from input. */
-        input[strcspn(input, "\n")] = '\0';
-
-        /* Show help command. */
-        if (strcmp(input, "help") == 0)
-        {
-            print_help();
-            continue;
-        }
-
-        /* Print local client state. */
-        if (strcmp(input, "state") == 0)
-        {
-            print_client_state(&client);
-            continue;
-        }
-
-        /* Convert input into outgoing server message. */
-        build_action_message(&client, input, outgoing, sizeof(outgoing));
-
-        /* If outgoing message is empty, command was unknown. */
-        if (outgoing[0] == '\0')
-        {
-            printf("Unknown command. Type 'help' for options.\n");
-            continue;
-        }
-
-        /* Send command to server. */
-        send_to_server(client.socket_fd, outgoing);
-
-        /* If quitting, stop after sending quit message. */
-        if (strcmp(input, "quit") == 0)
-        {
-            break;
-        }
-
-        /*
-         * Receive and process server response.
-         */
-        int result = receive_and_handle_server_messages(&client);
-
-        /* If server disconnected or error happened, stop. */
-        if (result <= 0)
-        {
-            break;
-        }
-    }
-
-    /* Close socket connection. */
-    close(client.socket_fd);
-
-    /* Mark client as disconnected. */
-    client.connected = 0;
-
-    printf("Disconnected from server.\n");
-
+ 
+    g_client.connected = 1;
+ 
+    // receive initial INFO message from server
+    char buffer[CLIENT_BUFFER_SIZE];
+    memset(buffer, 0, sizeof buffer);
+    int bytes = receive_from_server(g_client.socket_fd, buffer, sizeof buffer);
+    if (bytes > 0)
+        handle_server_buffer(&g_client, buffer);
+ 
+    // send LOGIN
+    char login_msg[CLIENT_BUFFER_SIZE];
+    snprintf(login_msg, sizeof login_msg, "LOGIN:-1:%s\n", name);
+    send_to_server(g_client.socket_fd, login_msg);
+ 
+    // register socket with GTK so on_server_readable fires on incoming data
+    GIOChannel *channel = g_io_channel_unix_new(g_client.socket_fd);
+    g_io_add_watch(channel, G_IO_IN, on_server_readable, NULL);
+    g_io_channel_unref(channel);
+ 
+    // launch GUI — passes socket fd so button callbacks can send to server
+    launch_poker_window(g_client.socket_fd);
+ 
+    gtk_main();
+ 
+    close(g_client.socket_fd);
     return 0;
 }
