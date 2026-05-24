@@ -268,7 +268,7 @@ void poker_gui_update_slot(int slot, const char* name, const char* bet_str, int 
 static GtkWidget* make_card_back_sm(void)
 {
     GdkPixbuf *pb = gdk_pixbuf_new_from_file_at_scale(
-        "assets/back_of_card.png", CARD_W_SM, CARD_H_SM, FALSE, NULL);
+        "src/assets/back_of_card.png", CARD_W_SM, CARD_H_SM, FALSE, NULL);
     GtkWidget *img = gtk_image_new_from_pixbuf(pb);
     if (pb) g_object_unref(pb);
     gtk_widget_set_size_request(img, CARD_W_SM, CARD_H_SM);
@@ -496,7 +496,7 @@ static GtkWidget* build_left_panel(void)
 
     GtkWidget* frame = gtk_frame_new(NULL);
     gtk_widget_set_name(frame, "rankings_frame");
-    GdkPixbuf *rpb = gdk_pixbuf_new_from_file_at_scale("assets/rankings.jpg", 268, -1, TRUE, NULL);
+    GdkPixbuf *rpb = gdk_pixbuf_new_from_file_at_scale("src/assets/rankings.jpg", 268, -1, TRUE, NULL);
     GtkWidget* img = gtk_image_new_from_pixbuf(rpb);
     if (rpb) g_object_unref(rpb);
     gtk_widget_set_size_request(img, 268, -1);
@@ -627,7 +627,7 @@ void launch_poker_window(int server_fd)
     GtkWidget *overlay = gtk_overlay_new();
     gtk_container_add(GTK_CONTAINER(win), overlay);
 
-    GdkPixbuf *bg_pb = gdk_pixbuf_new_from_file_at_scale("assets/background.jpg", 1100, 680, FALSE, NULL);
+    GdkPixbuf *bg_pb = gdk_pixbuf_new_from_file_at_scale("src/assets/background.jpg", 1100, 680, FALSE, NULL);
     GtkWidget *bg = gtk_image_new_from_pixbuf(bg_pb);
     if (bg_pb) g_object_unref(bg_pb);
     gtk_widget_set_size_request(bg, 1100, 680);
