@@ -55,5 +55,4 @@ void poker_evaluate_hand(const Card cards[7], PokerHandValue *value);
 const char *poker_hand_rank_to_string(PokerHandRank rank);
 
 
-
 #endif
