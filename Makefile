@@ -15,8 +15,17 @@
 
 # Compiler
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c11 -Iinclude
-LDFLAGS =
+
+# GTK settings.
+# These commands ask Ubuntu where the GTK header files and libraries are.
+GTK_CFLAGS = $(shell pkg-config --cflags gtk+-3.0)
+GTK_LIBS = $(shell pkg-config --libs gtk+-3.0)
+
+# Compiler and linker flags.
+# GTK_CFLAGS fixes: fatal error: gtk/gtk.h: No such file or directory
+# GTK_LIBS fixes linker errors for GTK functions.
+CFLAGS = -Wall -Wextra -std=c11 -Iinclude $(GTK_CFLAGS)
+LDFLAGS = $(GTK_LIBS)
 
 # Project directories
 SRC_DIR = src
@@ -73,6 +82,7 @@ CLIENT_OBJ = \
 
 .PHONY: all test server client clean directories
 
+# Default command: build everything.
 all: directories $(SERVER_BIN) $(CLIENT_BIN) $(TEST_DECK_BIN) $(TEST_SERVER_CLIENT_BIN)
 
 # Creates folders for executables and object files.
@@ -87,31 +97,31 @@ server: directories $(SERVER_BIN)
 client: directories $(CLIENT_BIN)
 
 # General compile rule for files inside src/rules/.
-$(BUILD_DIR)/%.o: $(RULES_DIR)/%.c
+$(BUILD_DIR)/%.o: $(RULES_DIR)/%.c | directories
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # General compile rule for files inside src/server/.
-$(BUILD_DIR)/%.o: $(SERVER_DIR)/%.c
+$(BUILD_DIR)/%.o: $(SERVER_DIR)/%.c | directories
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # General compile rule for files inside src/client/.
-$(BUILD_DIR)/%.o: $(CLIENT_DIR)/%.c
+$(BUILD_DIR)/%.o: $(CLIENT_DIR)/%.c | directories
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Builds the server executable.
-$(SERVER_BIN): $(SERVER_OBJ) $(RULES_OBJ)
+$(SERVER_BIN): $(SERVER_OBJ) $(RULES_OBJ) | directories
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
 # Builds the terminal client executable.
-$(CLIENT_BIN): $(CLIENT_OBJ) $(RULES_OBJ) $(BUILD_DIR)/game_state.o
+$(CLIENT_BIN): $(CLIENT_OBJ) $(RULES_OBJ) $(BUILD_DIR)/game_state.o | directories
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
 # Builds the deck test executable.
-$(TEST_DECK_BIN): $(TEST_DECK_SRC) $(RULES_OBJ)
+$(TEST_DECK_BIN): $(TEST_DECK_SRC) $(RULES_OBJ) | directories
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
 # Builds the server-client test executable.
-$(TEST_SERVER_CLIENT_BIN): $(TEST_SERVER_CLIENT_SRC)
+$(TEST_SERVER_CLIENT_BIN): $(TEST_SERVER_CLIENT_SRC) | directories
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
 # Runs basic tests.
