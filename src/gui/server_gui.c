@@ -212,12 +212,14 @@ void server_gui_refresh(void)
         if (i < g_game->community_count) {
             char path[128];
             card_to_asset_path(g_game->community_cards[i], path, sizeof path);
-            gtk_image_set_from_file(GTK_IMAGE(g_comm_card_img[i]), path);
+            GdkPixbuf *pb = gdk_pixbuf_new_from_file_at_scale(
+                path, 44, 63, FALSE, NULL);
+            gtk_image_set_from_pixbuf(GTK_IMAGE(g_comm_card_img[i]), pb);
+            if (pb) g_object_unref(pb);
         } else {
             gtk_image_clear(GTK_IMAGE(g_comm_card_img[i]));
         }
     }
- 
     // player rows
     for (int i = 0; i < MAX_PLAYERS; i++) {
         Player *p = &g_game->players[i];
@@ -518,7 +520,10 @@ void launch_server_window(GameState *game)
     GtkWidget *overlay = gtk_overlay_new();
     gtk_container_add(GTK_CONTAINER(win), overlay);
  
-    GtkWidget *bg = gtk_image_new_from_file("src/assets/background.jpg");
+     GdkPixbuf *bg_pb = gdk_pixbuf_new_from_file_at_scale(
+        "src/assets/background.jpg", 1100, 700, FALSE, NULL);
+    GtkWidget *bg = gtk_image_new_from_pixbuf(bg_pb);
+    if (bg_pb) g_object_unref(bg_pb);
     gtk_widget_set_size_request(bg, 1100, 700);
     gtk_container_add(GTK_CONTAINER(overlay), bg);
  
