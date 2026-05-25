@@ -33,24 +33,6 @@ Open the user manual:
 
     evince poker/doc/Poker_UserManual.pdf
 
-Start the server:
-
-    poker/bin/server --port 22022 --table "ZotHouse"
-
-Start the client:
-
-    poker/bin/poker --host server_name_or_ip --port 22022 --name username
-
-Start server and client in same terminal:
-    poker/bin/server --port 22022 --table "ZotHouse" & poker/bin/poker --host server_name_or_ip --port 22022
-    (This can be repeated for any number of clients by repeating the "& poker/bin/poker..." part)
-
-Replace `server_name_or_ip` with the actual host name or IP address of the server.
-
-Example:
-
-    poker/bin/poker --host crystalcove.eecs.uci.edu --port 22022
-
 ## Installing From Source
 
 The source package contains the project source code and must be compiled before running.
@@ -75,24 +57,13 @@ Clean generated files:
 
     make clean
 
-## Configuration Options
-
-| Option | Example | Description |
-|---|---|---|
-| `--host` | `--host crystalcove.eecs.uci.edu` | Server name or IP address used by the client |
-| `--port` | `--port 22022` | TCP port used by the server and client |
-| `--name` | `--name Hamza` | Optional player display name |
-| `--bots` | `--bots 1` | Number of bot players added by the server |
-| `--points` | `--points 1000` | Starting points for each player |
-| `--log` | `--log logs/game.log` | Location of the game log file |
-
 ## Running the Server
 
 The server acts as the dealer and controls the game state. It shuffles the deck, deals cards, tracks points, validates player actions, and broadcasts updates.
 
 Example server command:
 
-    ./bin/server --port 22022 --table "ZotHouse"
+    ./bin/server --port 10010 --table "ZotHouse"
 
 ## Running the Client
 
@@ -100,17 +71,11 @@ Each player runs a client program to connect to the server.
 
 Example client command:
 
-    ./bin/poker --host server_name_or_ip --port 22022
+    ./bin/poker --host server_name_or_ip --port 10010
 
 After connecting, the player enters a display name, chooses an open seat, and waits for the game to begin.
 
-## Running With Bots
-
-The server may add bot players to empty seats.
-
-Example:
-
-    ./bin/server --port 22022 --table "ZotHouse" --bots 1
+Replace `server_name_or_ip` with the actual host name or IP address of the server.
 
 ## Troubleshooting
 
@@ -127,11 +92,11 @@ Check that:
 
 Choose a different port number:
 
-    ./bin/server --port 22023 --table "ZotHouse"
+    ./bin/server --port 10011 --table "ZotHouse"
 
 Then clients must connect using the same port:
 
-    ./bin/poker --host server_name_or_ip --port 22023
+    ./bin/poker --host server_name_or_ip --port 10011
 
 ### Build fails
 
