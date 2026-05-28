@@ -76,8 +76,6 @@ int main(int argc, char *argv[]) {
             // --- CHECK IF IT IS THE BOT'S TURN ---
             if (strncmp(line, "STAT", 4) == 0) {
                 
-                // NOTE: You will need to extract the 'turn=X' value from the line in bot_update_state.
-                // Assuming state.is_my_turn is a boolean you set inside bot_update_state:
                 
                 // --- CHECK IF IT IS THE BOT'S TURN ---
                 if (strncmp(line, "STAT", 4) == 0) {
