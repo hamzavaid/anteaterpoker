@@ -4,11 +4,8 @@
 #include <stdlib.h>
 
 /*
- * bot_decide_action
- *
  * Looks at the bot's current memory of the table.
- * For this Alpha version, the bot is a "Calling Station": 
- * It will never FOLD and never RAISE. It only CALLS or CHECKS.
+ * Only CALLS or CHECKS.
  */
 const char* bot_decide_action(const BotState *state) {
     // Safety check: if state is somehow NULL, just fold to avoid a crash.
@@ -34,19 +31,14 @@ const char* bot_decide_action(const BotState *state) {
 /*
  * bot_calculate_raise
  *
- * Since the bot only checks or calls right now, this will just return 0.
+ * Returns 0 for now
  */
 int bot_calculate_raise(const BotState *state) {
     (void)state; // Ignore unused variable warning
     return 0; 
 }
 
-/*
- * bot_update_state
- *
- * Reads the raw string from the server and extracts the numbers
- * so the bot can make math-based decisions.
- */
+
 /*
  * bot_update_state
  *
@@ -80,7 +72,6 @@ void bot_update_state(BotState *state, const char *server_message) {
         }
 
         // B. Get the highest bet on the table 
-        // (Requires the small server fix mentioned above!)
         char *table_bet_ptr = strstr(server_message, "current_bet=");
         if (table_bet_ptr) {
             sscanf(table_bet_ptr, "current_bet=%d", &state->table_highest_bet);
@@ -95,7 +86,6 @@ void bot_update_state(BotState *state, const char *server_message) {
 
     // 3. Parse HAND messages to know our own stats
     // Format: "HAND:<seat>:cards=X,Y;points=Z;bet=W"
-    // (You will need to verify this format in build_private_hand_message!)
     if (strncmp(server_message, "HAND", 4) == 0) {
         // Extract how much the bot itself has currently bet
         char *my_bet_ptr = strstr(server_message, "bet=");
