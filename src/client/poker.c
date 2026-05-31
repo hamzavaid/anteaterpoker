@@ -611,7 +611,7 @@ static void handle_single_server_message(ClientState *client, const char *messag
         const char *payload = strchr(message + 5, ':');
         if (payload)
             payload++;
-        poker_gui_set_status(payload ? payload : "Ability resolved.");
+        poker_gui_set_alert(payload ? payload : "Ability resolved.");
         set_client_status(client, "Ability resolved.");
     }
 

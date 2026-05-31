@@ -40,6 +40,7 @@ static GtkWidget* g_ability_label = NULL;
 static GtkWidget* g_action_card_image  = NULL;
 static GtkWidget* g_action_card_desc   = NULL;
 static GtkWidget* g_action_card_frame  = NULL;
+static GtkWidget* g_action_card_alert = NULL;
 
 static GtkWidget* g_comm_card_img[MAX_COMM_CARDS];
 static GtkWidget* g_my_card_img[2];
@@ -208,6 +209,12 @@ static const char* POKER_CSS =
 "#action_card_desc {"
 "  color: #aac8e0;"
 "  font-size: 9px;"
+"}"
+"#action_alert {"
+"  color: #42c46e;"
+"  font-size: 11px;"
+"  font-weight: bold;"
+"  min-height: 20px;"
 "}"
 "#action_card_none {"
 "  color: #2d4a6a;"
@@ -383,6 +390,13 @@ void poker_gui_set_ability(const char* ability)
         gtk_label_set_text(GTK_LABEL(g_action_card_desc), "No action card assigned yet.");
         gtk_widget_set_name(g_action_card_desc, "action_card_none");
         gtk_widget_set_name(g_action_card_frame, "action_card_box_empty");
+    }
+}
+
+void poker_gui_set_alert(const char* message)
+{
+    if (message && message[0] != '\0') {
+        gtk_label_set_text(GTK_LABEL(g_action_card_alert), message);
     }
 }
 
@@ -651,6 +665,14 @@ static GtkWidget* build_action_card_panel(void)
     gtk_label_set_justify(GTK_LABEL(g_action_card_desc), GTK_JUSTIFY_CENTER);
     gtk_widget_set_halign(g_action_card_desc, GTK_ALIGN_CENTER);
     gtk_box_pack_start(GTK_BOX(inner), g_action_card_desc, FALSE, FALSE, 0);
+
+    g_action_card_alert = gtk_label_new("");
+    gtk_widget_set_size_request(g_action_card_alert, -1, 40);
+    gtk_widget_set_name(g_action_card_alert, "action_alert");
+    gtk_label_set_line_wrap(GTK_LABEL(g_action_card_alert), TRUE);
+    gtk_label_set_justify(GTK_LABEL(g_action_card_alert), GTK_JUSTIFY_CENTER);
+    gtk_widget_set_halign(g_action_card_alert, GTK_ALIGN_CENTER);
+    gtk_box_pack_start(GTK_BOX(inner), g_action_card_alert, FALSE, FALSE, 0);
  
     return frame;
 }
@@ -686,8 +708,6 @@ static GtkWidget* build_right_panel(void)
 
         gtk_box_pack_start(GTK_BOX(vbox), frame, FALSE, FALSE, 0);
     }
-
-    /* action card is shown in the left panel now */
 
     //action box
     {

@@ -11,6 +11,7 @@ void poker_gui_set_stack(int amount);
 void poker_gui_set_status(const char *msg);
 void poker_gui_set_winner(const char *winner_msg);
 void poker_gui_set_ability(const char *ability);
+void poker_gui_set_alert(const char* message);
 void poker_gui_set_community_card(int idx, const char *path);
 void poker_gui_set_my_card(int idx, const char *path);
 void poker_gui_set_my_seat(int seat);

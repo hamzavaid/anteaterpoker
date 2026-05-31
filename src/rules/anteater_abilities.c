@@ -60,7 +60,7 @@ int anteater_apply_ability(GameState *game, int seat, int target_seat,
                        card_text, sizeof(card_text));
         player->ability.used = 1;
         snprintf(result, result_size, "Sniff revealed seat %d card %d: %s",
-                 target_seat, card_index + 1, card_text);
+                 target_seat + 1, card_index + 1, card_text);
         return 1;
     }
 
@@ -103,12 +103,12 @@ int anteater_apply_ability(GameState *game, int seat, int target_seat,
             game->players[target_seat].ability.used)
         {
             snprintf(result, result_size, "Seat %d has no unused ability to cancel.",
-                     target_seat);
+                     target_seat + 1);
             return 0;
         }
         game->players[target_seat].ability.used = 1;
         player->ability.used = 1;
-        snprintf(result, result_size, "Pose canceled seat %d's ability.", target_seat);
+        snprintf(result, result_size, "Pose canceled seat %d's ability.", target_seat + 1);
         return 1;
     }
 
