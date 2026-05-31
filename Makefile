@@ -10,7 +10,6 @@
 # Main executables:
 #   bin/poker_server
 #   bin/poker_client
-#   bin/poker_bot
 #
 # Legacy symlinks:
 #   bin/server -> poker_server
@@ -40,7 +39,6 @@ DIST_DIR = dist
 # Output programs required by alpha rubric
 SERVER_BIN = $(BIN_DIR)/poker_server
 CLIENT_BIN = $(BIN_DIR)/poker_client
-BOT_BIN = $(BIN_DIR)/poker_bot
 
 # Optional legacy names
 LEGACY_SERVER_BIN = $(BIN_DIR)/server
@@ -66,7 +64,8 @@ SERVER_OBJ = \
     $(BUILD_DIR)/server.o \
     $(BUILD_DIR)/game_state.o \
     $(BUILD_DIR)/socket_server.o \
-    $(BUILD_DIR)/server_gui.o
+    $(BUILD_DIR)/server_gui.o \
+    $(BUILD_DIR)/bot_logic.o
 
 # Client objects
 CLIENT_OBJ = \
@@ -75,15 +74,11 @@ CLIENT_OBJ = \
     $(BUILD_DIR)/socket_client.o \
     $(BUILD_DIR)/client_gui.o
 
-# Bot objects
-BOT_OBJ = \
-    $(BUILD_DIR)/bot.o \
-    $(BUILD_DIR)/bot_logic.o
 
 .PHONY: all server client bot test test-gui clean directories tar source-tar user-tar legacy-links check-docs
 
-# Build everything required. Added $(BOT_BIN) here.
-all: directories $(SERVER_BIN) $(CLIENT_BIN) $(BOT_BIN) $(TEST_DECK_BIN) $(TEST_SERVER_CLIENT_BIN) legacy-links
+# Build everything required.
+all: directories $(SERVER_BIN) $(CLIENT_BIN) $(TEST_DECK_BIN) $(TEST_SERVER_CLIENT_BIN) legacy-links
 
 directories:
 	mkdir -p $(BIN_DIR)
@@ -121,10 +116,6 @@ $(SERVER_BIN): $(SERVER_OBJ) $(RULES_OBJ) | directories
 
 # Build client executable.
 $(CLIENT_BIN): $(CLIENT_OBJ) $(RULES_OBJ) $(BUILD_DIR)/game_state.o | directories
-	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
-
-# Build bot executable.
-$(BOT_BIN): $(BOT_OBJ) $(RULES_OBJ) | directories
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
 # Build deck unit test.
@@ -210,7 +201,6 @@ user-tar: all check-docs
 	cp COPYRIGHT.md $(DIST_DIR)/Poker_Alpha/COPYRIGHT.md
 	cp $(SERVER_BIN) $(DIST_DIR)/Poker_Alpha/bin/poker_server
 	cp $(CLIENT_BIN) $(DIST_DIR)/Poker_Alpha/bin/poker_client
-	cp $(BOT_BIN) $(DIST_DIR)/Poker_Alpha/bin/poker_bot
 	cp doc/Poker_UserManual.pdf $(DIST_DIR)/Poker_Alpha/doc/Poker_UserManual.pdf
 
 	# Copy assets if your GUI loads images from src/assets.
@@ -228,7 +218,6 @@ clean:
 	rm -rf $(DIST_DIR)
 	rm -f $(SERVER_BIN)
 	rm -f $(CLIENT_BIN)
-	rm -f $(BOT_BIN)
 	rm -f $(LEGACY_SERVER_BIN)
 	rm -f $(LEGACY_CLIENT_BIN)
 	rm -f $(TEST_DECK_BIN)
