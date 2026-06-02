@@ -13,8 +13,10 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "game_state.h"
+#include "poker_rules.h"
 
 /*
  * init_server_config
@@ -88,6 +90,7 @@ void init_game_state(GameState *game, const ServerConfig *config, int server_fd)
     game->current_bet = 0;
     game->community_count = 0;
     game->last_winner_seat = -1;
+    game->last_winning_hand_rank = -1;
     for (int i = 0; i < MAX_PLAYERS; i++) {
         game->acted_this_round[i] = 0;
     }
@@ -226,6 +229,8 @@ void remove_player(GameState *game, int seat)
             game->pot = 0;
             game->current_bet = 0;
             game->community_count = 0;
+            game->last_winner_seat = -1;
+            game->last_winning_hand_rank = -1;
 
             for (int i = 0; i < MAX_PLAYERS; i++) {
                 game->acted_this_round[i] = 0;
@@ -273,6 +278,7 @@ void start_new_hand(GameState *game)
     game->current_bet = 0;
     game->community_count = 0;
     game->last_winner_seat = -1;
+    game->last_winning_hand_rank = -1;
     for (int i = 0; i < MAX_PLAYERS; i++) {
         game->acted_this_round[i] = 0;
     }
@@ -310,10 +316,6 @@ void start_new_hand(GameState *game)
  *
  * Deals two normal poker cards to every active player.
  * Also assigns one temporary Anteater ability card.
- *
- * NOTE:
- *   The alpha build assigns abilities deterministically by seat so testers can
- *   see each ability type without relying on randomness.
  */
 void deal_private_cards(GameState *game)
 {
@@ -327,8 +329,7 @@ void deal_private_cards(GameState *game)
             game->players[i].hand[0] = deal_card(&game->deck);
             game->players[i].hand[1] = deal_card(&game->deck);
 
-            /* Seats cycle through ability values 1-5. */
-            game->players[i].ability.type = (AbilityType)((i % 5) + 1);
+            game->players[i].ability.type = (AbilityType)((rand() % 5) + 1);
             game->players[i].ability.used = 0;
             game->players[i].ability.owner_seat = i;
         }
@@ -488,6 +489,8 @@ void build_public_game_state(const GameState *game, char *buffer, int buffer_siz
 
     char community_cards[256] = "";
     char player_summary[512] = "";
+    char showdown_cards[512] = "";
+    const char *winner_hand = "";
     int visible_players = 0;
     for (int i = 0; i < game->community_count; i++) {
         char card_str[64];
@@ -526,10 +529,57 @@ void build_public_game_state(const GameState *game, char *buffer, int buffer_siz
                 sizeof(player_summary) - strlen(player_summary) - 1);
     }
 
+    if (game->phase == PHASE_GAME_OVER &&
+        game->community_count == COMMUNITY_CARD_SIZE &&
+        game->last_winner_seat >= 0)
+    {
+        if (game->last_winning_hand_rank >= HAND_RANK_HIGH_CARD &&
+            game->last_winning_hand_rank <= HAND_RANK_STRAIGHT_FLUSH)
+        {
+            winner_hand = poker_hand_rank_to_string((PokerHandRank)game->last_winning_hand_rank);
+        }
+
+        for (int i = 0; i < MAX_PLAYERS; i++) {
+            const Player *player = &game->players[i];
+            char card1[64];
+            char card2[64];
+            char entry[160];
+
+            if (player->status == PLAYER_EMPTY ||
+                (player->status == PLAYER_CONNECTED && strcmp(player->name, "Guest") == 0)) {
+                continue;
+            }
+
+            if (!is_valid_card(player->hand[0]) && !is_valid_card(player->hand[1])) {
+                continue;
+            }
+
+            if (!is_valid_card(player->hand[0])) {
+                snprintf(card1, sizeof(card1), "wildcard");
+            } else {
+                card_to_string(player->hand[0], card1, sizeof(card1));
+            }
+
+            if (!is_valid_card(player->hand[1])) {
+                snprintf(card2, sizeof(card2), "wildcard");
+            } else {
+                card_to_string(player->hand[1], card2, sizeof(card2));
+            }
+
+            snprintf(entry, sizeof(entry), "%s%d|%s|%s",
+                     showdown_cards[0] ? "," : "",
+                     i,
+                     card1,
+                     card2);
+            strncat(showdown_cards, entry,
+                    sizeof(showdown_cards) - strlen(showdown_cards) - 1);
+        }
+    }
+
     snprintf(
         buffer,
         buffer_size,
-        "STAT:-1:phase=%s;players=%d;pot=%d;turn=%d;winner=%d;community=%d;community_cards=%s;player_state=%s\n",
+        "STAT:-1:phase=%s;players=%d;pot=%d;turn=%d;winner=%d;community=%d;community_cards=%s;winner_hand=%s;showdown_cards=%s;player_state=%s\n",
         game_phase_to_string(game->phase),
         visible_players,
         game->pot,
@@ -537,6 +587,8 @@ void build_public_game_state(const GameState *game, char *buffer, int buffer_siz
         game->last_winner_seat,
         game->community_count,
         community_cards,
+        winner_hand,
+        showdown_cards,
         player_summary
     );
 }
@@ -550,7 +602,7 @@ void build_public_game_state(const GameState *game, char *buffer, int buffer_siz
  * This must only be sent to the matching client.
  *
  * Format:
- *   HAND:<seat>:<card1>,<card2>,ability=<ability>;points=<points>
+ *   HAND:<seat>:<card1>,<card2>,ability=<ability>;ability_used=<0|1>;points=<points>
  */
 void build_private_hand_message(const GameState *game, int seat, char *buffer, int buffer_size)
 {
@@ -579,11 +631,12 @@ void build_private_hand_message(const GameState *game, int seat, char *buffer, i
     snprintf(
         buffer,
         buffer_size,
-        "HAND:%d:%s,%s,ability=%s;points=%d\n",
+        "HAND:%d:%s,%s,ability=%s;ability_used=%d;points=%d\n",
         seat,
         card1,
         card2,
         ability_to_string(player->ability.type),
+        player->ability.used,
         player->points
     );
 }

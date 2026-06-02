@@ -80,6 +80,7 @@ typedef struct {
     Card community_cards[COMMUNITY_CARD_SIZE];
     int community_count;
     int last_winner_seat;
+    int last_winning_hand_rank;
 } GameState;
 
 void init_server_config(ServerConfig *config);

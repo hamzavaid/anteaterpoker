@@ -392,10 +392,10 @@ static void handle_client_message(GameState *game, int client_fd, const char *bu
             return;
         }
 
-        snprintf(reply, sizeof(reply), "ABIL:%d:%s\n", seat, result);
-        send_message(client_fd, reply);
         send_public_state_to_all(game);
         send_private_hands_to_all(game);
+        snprintf(reply, sizeof(reply), "ABIL:%d:%s\n", seat, result);
+        send_message(client_fd, reply);
         server_gui_refresh();
         return;
     }

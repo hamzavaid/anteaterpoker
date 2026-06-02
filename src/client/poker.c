@@ -78,6 +78,144 @@ static void build_card_asset_path(char *out, size_t out_size, const char *card_t
     snprintf(out, out_size, "src/assets/%s.png", filename);
 }
 
+static void pretty_card_text(char *out, size_t out_size, const char *card_text)
+{
+    char rank[64];
+    char suit[64];
+    size_t j = 0;
+    int capitalize_next = 1;
+
+    if (out == NULL || out_size == 0)
+    {
+        return;
+    }
+
+    if (card_text == NULL)
+    {
+        out[0] = '\0';
+        return;
+    }
+
+    if (sscanf(card_text, "%63[^_]_of_%63s", rank, suit) == 2)
+    {
+        if (isalpha((unsigned char)rank[0]))
+            rank[0] = (char)toupper((unsigned char)rank[0]);
+        if (isalpha((unsigned char)suit[0]))
+            suit[0] = (char)toupper((unsigned char)suit[0]);
+        snprintf(out, out_size, "%s of %s", rank, suit);
+        return;
+    }
+
+    for (size_t i = 0; card_text[i] != '\0' && j < out_size - 1; i++)
+    {
+        unsigned char ch = (unsigned char)card_text[i];
+
+        if (ch == '_')
+        {
+            out[j++] = ' ';
+            capitalize_next = 1;
+        }
+        else if (capitalize_next && isalpha(ch))
+        {
+            out[j++] = (char)toupper(ch);
+            capitalize_next = 0;
+        }
+        else
+        {
+            out[j++] = (char)ch;
+            if (!isspace(ch))
+                capitalize_next = 0;
+        }
+    }
+
+    out[j] = '\0';
+}
+
+static void pretty_ability_result(char *out, size_t out_size, const char *payload)
+{
+    int seat = 0;
+    int card_index = 0;
+    char card_text[128];
+    char pretty_card[128];
+
+    if (out == NULL || out_size == 0)
+    {
+        return;
+    }
+
+    if (payload == NULL)
+    {
+        snprintf(out, out_size, "Ability resolved.");
+        return;
+    }
+
+    card_text[0] = '\0';
+
+    if (sscanf(payload, "Sniff revealed seat %d card %d: %127s",
+               &seat, &card_index, card_text) == 3)
+    {
+        pretty_card_text(pretty_card, sizeof pretty_card, card_text);
+        snprintf(out, out_size, "Sniff revealed Seat %d Card %d: %s",
+                 seat, card_index, pretty_card);
+        return;
+    }
+
+    if (sscanf(payload, "Ant Trail found the next community rank: %127[^.]",
+               card_text) == 1)
+    {
+        pretty_card_text(pretty_card, sizeof pretty_card, card_text);
+        snprintf(out, out_size, "Ant Trail found the next community rank: %s.",
+                 pretty_card);
+        return;
+    }
+
+    if (sscanf(payload, "Ant Trail found the next community suit: %127[^.]",
+               card_text) == 1)
+    {
+        pretty_card_text(pretty_card, sizeof pretty_card, card_text);
+        snprintf(out, out_size, "Ant Trail found the next community suit: %s.",
+                 pretty_card);
+        return;
+    }
+
+    snprintf(out, out_size, "%s", payload);
+}
+
+static void reveal_sniff_card(ClientState *client, const char *payload)
+{
+    int seat = 0;
+    int card_index = 0;
+    char card_text[128];
+    char asset_path[128];
+
+    if (client == NULL || payload == NULL)
+    {
+        return;
+    }
+
+    card_text[0] = '\0';
+    if (sscanf(payload, "Sniff revealed seat %d card %d: %127s",
+               &seat, &card_index, card_text) != 3)
+    {
+        return;
+    }
+
+    if (seat <= 0 || card_index <= 0 || card_index > 2)
+    {
+        return;
+    }
+
+    build_card_asset_path(asset_path, sizeof asset_path, card_text);
+    if (seat - 1 == client->seat)
+    {
+        poker_gui_set_my_card(card_index - 1, asset_path);
+    }
+    else
+    {
+        poker_gui_set_opponent_card(seat - 1, card_index - 1, asset_path);
+    }
+}
+
 /*
  * Converts a phase string from the server into a GamePhase enum.
  *
@@ -181,6 +319,38 @@ static AbilityType ability_from_string(const char *ability)
     return ABILITY_NONE;
 }
 
+static int copy_stat_field(const char *message, const char *field, char *out, size_t out_size)
+{
+    const char *start;
+    const char *end;
+    size_t len;
+
+    if (message == NULL || field == NULL || out == NULL || out_size == 0)
+    {
+        return 0;
+    }
+
+    start = strstr(message, field);
+    if (start == NULL)
+    {
+        out[0] = '\0';
+        return 0;
+    }
+
+    start += strlen(field);
+    end = strchr(start, ';');
+    if (end == NULL)
+        end = strchr(start, '\n');
+
+    len = end ? (size_t)(end - start) : strlen(start);
+    if (len >= out_size)
+        len = out_size - 1;
+
+    memcpy(out, start, len);
+    out[len] = '\0';
+    return 1;
+}
+
 static void update_player_widgets_from_state(ClientState *client, const char *player_state)
 {
     char copy[512];
@@ -225,6 +395,53 @@ static void update_player_widgets_from_state(ClientState *client, const char *pl
                                       seat == client->current_turn,
                                       status == PLAYER_FOLDED);
                 opponent_slot++;
+            }
+        }
+
+        entry = strtok_r(NULL, ",", &saveptr);
+    }
+}
+
+static void update_showdown_cards(ClientState *client, const char *showdown_cards)
+{
+    char copy[512];
+    char *saveptr = NULL;
+
+    if (client == NULL || showdown_cards == NULL || showdown_cards[0] == '\0')
+    {
+        return;
+    }
+
+    snprintf(copy, sizeof(copy), "%s", showdown_cards);
+
+    char *entry = strtok_r(copy, ",", &saveptr);
+    while (entry != NULL)
+    {
+        int seat = -1;
+        char card1_text[128];
+        char card2_text[128];
+
+        card1_text[0] = '\0';
+        card2_text[0] = '\0';
+
+        if (sscanf(entry, "%d|%127[^|]|%127[^|]",
+                   &seat, card1_text, card2_text) == 3)
+        {
+            char path1[128];
+            char path2[128];
+
+            build_card_asset_path(path1, sizeof path1, card1_text);
+            build_card_asset_path(path2, sizeof path2, card2_text);
+
+            if (seat == client->seat)
+            {
+                poker_gui_set_my_card(0, path1);
+                poker_gui_set_my_card(1, path2);
+            }
+            else
+            {
+                poker_gui_set_opponent_card(seat, 0, path1);
+                poker_gui_set_opponent_card(seat, 1, path2);
             }
         }
 
@@ -294,6 +511,8 @@ static void parse_stat_message(ClientState *client, const char *message)
     int turn = -1;
     int winner_seat = -1;
     char winner_name[CLIENT_NAME_LEN] = "";
+    char winner_hand[64] = "";
+    char showdown_cards[512] = "";
     int community = 0;
 
     /* Make sure inputs are valid. */
@@ -314,6 +533,12 @@ static void parse_stat_message(ClientState *client, const char *message)
         client->pot = pot;
         client->current_turn = turn;
         client->community_count = community;
+
+        for (int i = 0; i < COMMUNITY_CARD_SIZE; i++)
+        {
+            client->community_cards[i] = create_card(RANK_INVALID, SUIT_INVALID);
+            poker_gui_set_community_card(i, NULL);
+        }
 
         // parse optional community card list
         const char *p = strstr(message, "community_cards=");
@@ -349,6 +574,9 @@ static void parse_stat_message(ClientState *client, const char *message)
             client->community_count = i;
         }
 
+        copy_stat_field(message, "winner_hand=", winner_hand, sizeof winner_hand);
+        copy_stat_field(message, "showdown_cards=", showdown_cards, sizeof showdown_cards);
+
         const char *players_text = strstr(message, "player_state=");
         if (players_text)
         {
@@ -363,6 +591,10 @@ static void parse_stat_message(ClientState *client, const char *message)
             memcpy(player_tmp, players_text, len);
             player_tmp[len] = '\0';
             update_player_widgets_from_state(client, player_tmp);
+            if (showdown_cards[0])
+            {
+                update_showdown_cards(client, showdown_cards);
+            }
 
             /* If server included a winner seat, try to find the player's name. */
             if (winner_seat >= 0) {
@@ -399,11 +631,21 @@ static void parse_stat_message(ClientState *client, const char *message)
         if (client->phase == PHASE_GAME_OVER)
         {
             poker_gui_set_my_turn_active(0);
-            poker_gui_set_status("Hand over");
+            if (winner_hand[0]) {
+                char status_msg[128];
+                snprintf(status_msg, sizeof status_msg, "Hand over - won with %s", winner_hand);
+                poker_gui_set_status(status_msg);
+            } else {
+                poker_gui_set_status("Hand over");
+            }
             if (winner_seat >= 0) {
                 char winner_msg[128];
-                if (winner_name[0])
+                if (winner_name[0] && winner_hand[0])
+                    snprintf(winner_msg, sizeof winner_msg, "%s - Seat %d won with %s!", winner_name, winner_seat + 1, winner_hand);
+                else if (winner_name[0])
                     snprintf(winner_msg, sizeof winner_msg, "%s - Seat %d won the hand!", winner_name, winner_seat + 1);
+                else if (winner_hand[0])
+                    snprintf(winner_msg, sizeof winner_msg, "Seat %d won with %s!", winner_seat + 1, winner_hand);
                 else
                     snprintf(winner_msg, sizeof winner_msg, "Seat %d won the hand!", winner_seat + 1);
                 poker_gui_set_winner(winner_msg);
@@ -459,6 +701,7 @@ static void parse_hand_message(ClientState *client, const char *message)
 
     /* Stores the ability string from the server. */
     char ability_text[64];
+    int ability_used = 0;
     int points = 0;
 
     /* Make sure inputs are valid. */
@@ -472,16 +715,30 @@ static void parse_hand_message(ClientState *client, const char *message)
      *
      * %127[^,] reads everything until the first comma.
      * %127[^,] reads everything until the second comma.
-     * %63s reads the ability text after ability=.
+     * %63[^;] reads the ability text after ability=.
      */
     int matched = sscanf(
         message,
-        "HAND:%d:%127[^,],%127[^,],ability=%63[^;];points=%d",
+        "HAND:%d:%127[^,],%127[^,],ability=%63[^;];ability_used=%d;points=%d",
         &seat,
         card1_text,
         card2_text,
         ability_text,
+        &ability_used,
         &points);
+
+    if (matched < 5)
+    {
+        matched = sscanf(
+            message,
+            "HAND:%d:%127[^,],%127[^,],ability=%63[^;];points=%d",
+            &seat,
+            card1_text,
+            card2_text,
+            ability_text,
+            &points);
+        ability_used = 0;
+    }
 
     /*
      * If parsing worked, update the client's ability and status.
@@ -499,12 +756,12 @@ static void parse_hand_message(ClientState *client, const char *message)
         poker_gui_set_my_card(1, path2);
 
         // update stack display using the server-authoritative point total
-        if (matched == 5)
+        if (matched >= 5)
             poker_gui_set_stack(points);
 
         char ability_label[96];
         snprintf(ability_label, sizeof ability_label, "Ability: %s", ability_text);
-        poker_gui_set_ability(ability_label);
+        poker_gui_set_ability_used(ability_label, ability_used);
 
         set_client_status(client, "Received private hand.");
 
@@ -609,9 +866,14 @@ static void handle_single_server_message(ClientState *client, const char *messag
     else if (strncmp(message, "ABIL:", 5) == 0)
     {
         const char *payload = strchr(message + 5, ':');
+        char pretty_result[256];
+
         if (payload)
             payload++;
-        poker_gui_set_alert(payload ? payload : "Ability resolved.");
+
+        reveal_sniff_card(client, payload);
+        pretty_ability_result(pretty_result, sizeof pretty_result, payload);
+        poker_gui_set_alert(pretty_result);
         set_client_status(client, "Ability resolved.");
     }
 

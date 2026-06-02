@@ -109,6 +109,7 @@ int poker_apply_action(GameState *game, int seat, const char *action, int raise_
         /* Record winner for client display when hand ends due to folds. */
         if (winner >= 0) {
             game->last_winner_seat = winner;
+            game->last_winning_hand_rank = -1;
         }
         game->phase = PHASE_GAME_OVER;
         game->current_turn = -1;
@@ -187,8 +188,19 @@ void poker_resolve_showdown(GameState *game)
     int count = poker_find_showdown_winners(game, winners, MAX_PLAYERS);
 
     if (count > 0) {
+        Card cards[7];
+        PokerHandValue winning_value;
+
         /* Record the first winner for client display. */
         game->last_winner_seat = winners[0];
+        cards[0] = game->players[winners[0]].hand[0];
+        cards[1] = game->players[winners[0]].hand[1];
+        for (int c = 0; c < COMMUNITY_CARD_SIZE; c++) {
+            cards[c + 2] = game->community_cards[c];
+        }
+        poker_evaluate_hand(cards, &winning_value);
+        game->last_winning_hand_rank = winning_value.rank;
+
         /* Split ties evenly; the first winner receives any odd remainder. */
         int share = game->pot / count;
         int remainder = game->pot % count;

@@ -47,6 +47,7 @@ static GtkWidget* g_my_card_img[2];
 
 //Opponent Slot struct to hold widgets for each opponent's display (name, bet, avatar, cards)
 typedef struct {
+    int seat;
     GtkWidget* name_label;
     GtkWidget* bet_label;
     GtkWidget* avatar_box;
@@ -191,6 +192,12 @@ static const char* POKER_CSS =
 "#action_card_box {"
 "  background-color: rgba(10,18,28,0.97);"
 "  border: 2px solid #d4b830;"
+"  border-radius: 10px;"
+"  padding: 8px 10px;"
+"}"
+"#action_card_box_used {"
+"  background-color: rgba(10,18,28,0.97);"
+"  border: 2px solid #c43f42;"
 "  border-radius: 10px;"
 "  padding: 8px 10px;"
 "}"
@@ -360,7 +367,7 @@ void poker_gui_set_winner(const char *winner_msg)
     gtk_label_set_text(GTK_LABEL(g_winner_label), winner_msg ? winner_msg : "");
 }
 
-void poker_gui_set_ability(const char* ability)
+void poker_gui_set_ability_used(const char* ability, int used)
 {
     if (!g_ability_label) return;
     gtk_label_set_text(GTK_LABEL(g_ability_label), ability ? ability : "Ability: NONE");
@@ -370,11 +377,25 @@ void poker_gui_set_ability(const char* ability)
     const AbilityInfo* info = find_ability_info(ability);
  
     if (info) {
+        if (!used && g_action_card_alert)
+            gtk_label_set_text(GTK_LABEL(g_action_card_alert), "");
+
         // Load and display the action card image
         GdkPixbuf* pb = gdk_pixbuf_new_from_file_at_scale(
             info->img_path, ACTION_IMG_W, ACTION_IMG_H, FALSE, NULL);
         if (pb) {
-            gtk_image_set_from_pixbuf(GTK_IMAGE(g_action_card_image), pb);
+            if (used) {
+                GdkPixbuf* gray = gdk_pixbuf_copy(pb);
+                if (gray) {
+                    gdk_pixbuf_saturate_and_pixelate(pb, gray, 0.0, FALSE);
+                    gtk_image_set_from_pixbuf(GTK_IMAGE(g_action_card_image), gray);
+                    g_object_unref(gray);
+                } else {
+                    gtk_image_set_from_pixbuf(GTK_IMAGE(g_action_card_image), pb);
+                }
+            } else {
+                gtk_image_set_from_pixbuf(GTK_IMAGE(g_action_card_image), pb);
+            }
             g_object_unref(pb);
         } else {
             gtk_image_clear(GTK_IMAGE(g_action_card_image));
@@ -383,8 +404,12 @@ void poker_gui_set_ability(const char* ability)
         // Update description text
         gtk_label_set_text(GTK_LABEL(g_action_card_desc), info->description);
         gtk_widget_set_name(g_action_card_desc, "action_card_desc");
-        gtk_widget_set_name(g_action_card_frame, "action_card_box");
+        gtk_widget_set_name(g_action_card_frame,
+                            used ? "action_card_box_used" : "action_card_box");
     } else {
+        if (g_action_card_alert)
+            gtk_label_set_text(GTK_LABEL(g_action_card_alert), "");
+
         // No ability — clear the image and show placeholder text
         gtk_image_clear(GTK_IMAGE(g_action_card_image));
         gtk_label_set_text(GTK_LABEL(g_action_card_desc), "No action card assigned yet.");
@@ -395,9 +420,9 @@ void poker_gui_set_ability(const char* ability)
 
 void poker_gui_set_alert(const char* message)
 {
-    if (message && message[0] != '\0') {
-        gtk_label_set_text(GTK_LABEL(g_action_card_alert), message);
-    }
+    if (!g_action_card_alert) return;
+    gtk_label_set_text(GTK_LABEL(g_action_card_alert),
+                       (message && message[0] != '\0') ? message : "");
 }
 
 void poker_gui_clear_opponents(void)
@@ -435,6 +460,34 @@ void poker_gui_set_my_card(int idx, const char* path)
     }
 }
 
+void poker_gui_set_ability(const char* ability)
+{
+    poker_gui_set_ability_used(ability, 0);
+}
+
+void poker_gui_set_opponent_card(int seat, int idx, const char* path)
+{
+    if (idx < 0 || idx >= 2) return;
+
+    for (int i = 0; i < MAX_PLAYERS - 1; i++) {
+        OpponentSlot* s = &g_slots[i];
+
+        if (s->seat != seat || !s->card_img[idx]) {
+            continue;
+        }
+
+        if (path) {
+            GdkPixbuf *pb = gdk_pixbuf_new_from_file_at_scale(
+                path, CARD_W_SM, CARD_H_SM, FALSE, NULL);
+            gtk_image_set_from_pixbuf(GTK_IMAGE(s->card_img[idx]), pb);
+            if (pb) g_object_unref(pb);
+        } else {
+            gtk_image_clear(GTK_IMAGE(s->card_img[idx]));
+        }
+        return;
+    }
+}
+
 void poker_gui_set_my_turn_active(int is_active)
 {
     if (!g_my_avatar_box) return;
@@ -449,6 +502,7 @@ void poker_gui_update_slot(int slot, int seat, const char* name, const char* bet
 {
     if (slot < 0 || slot >= MAX_PLAYERS - 1) return;
     OpponentSlot* s = &g_slots[slot];
+    s->seat = seat;
 
     if (s->name_label)
     {
@@ -478,6 +532,19 @@ void poker_gui_update_slot(int slot, int seat, const char* name, const char* bet
     if (s->avatar_box)
         gtk_widget_set_name(s->avatar_box,
             is_active ? "avatar_box_active" : "avatar_box");
+
+    for (int i = 0; i < 2; i++) {
+        if (!s->card_img[i]) continue;
+
+        if (seat >= 0) {
+            GdkPixbuf *pb = gdk_pixbuf_new_from_file_at_scale(
+                "src/assets/back_of_card.png", CARD_W_SM, CARD_H_SM, FALSE, NULL);
+            gtk_image_set_from_pixbuf(GTK_IMAGE(s->card_img[i]), pb);
+            if (pb) g_object_unref(pb);
+        } else {
+            gtk_image_clear(GTK_IMAGE(s->card_img[i]));
+        }
+    }
 }
 
 static GtkWidget* make_card_back_sm(void)
@@ -573,7 +640,6 @@ static void on_ability(GtkButton* b, gpointer d)
     target_seat = target_seat > 0 ? target_seat - 1 : -1;
 
     snprintf(msg, sizeof msg, "ABIL:-1:%d:%s\n", target_seat, param);
-    poker_gui_set_status("Ability used.");
     send_to_server(g_server_fd, msg);
 }
 
@@ -596,6 +662,7 @@ static void on_quit(GtkButton* b, gpointer d)
 static GtkWidget* build_opponent_slot(int idx)
 {
     OpponentSlot* s = &g_slots[idx];
+    s->seat = -1;
 
     GtkWidget* vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
     gtk_widget_set_halign(vbox, GTK_ALIGN_CENTER);
