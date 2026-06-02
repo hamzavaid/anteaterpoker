@@ -73,6 +73,47 @@ static void parse_server_args(int argc, char *argv[], ServerConfig *config)
 }
 
 /*
+ * add_startup_bots
+ *
+ * Creates the in-process bot players requested by --bots.
+ * Bot players use socket_fd = -1 and are driven by server_auto_play_bot_turns.
+ */
+static void add_startup_bots(GameState *game)
+{
+    int requested;
+
+    if (game == NULL) {
+        return;
+    }
+
+    requested = game->config.bot_count;
+    if (requested < 0) {
+        requested = 0;
+    }
+    if (requested > MAX_PLAYERS) {
+        requested = MAX_PLAYERS;
+    }
+
+    game->config.bot_count = 0;
+
+    for (int i = 0; i < requested; i++) {
+        char bot_name[MAX_NAME_LEN];
+        int seat;
+
+        snprintf(bot_name, sizeof bot_name, "Bot %d", game->config.bot_count + 1);
+        seat = add_player(game, -1, bot_name);
+        if (seat < 0) {
+            fprintf(stderr, "[SERVER] Could only add %d startup bot(s); table is full.\n",
+                    game->config.bot_count);
+            break;
+        }
+
+        game->config.bot_count++;
+        printf("[SERVER] Bot '%s' added to seat %d from --bots\n", bot_name, seat);
+    }
+}
+
+/*
  * collect_client_fds
  *
  * Builds an array of active client socket file descriptors.
@@ -546,6 +587,7 @@ int main(int argc, char *argv[])
 
     /* Initialize the official server-side game state. */
     init_game_state(&g_game, &config, server_fd);
+    add_startup_bots(&g_game);
 
     printf("Anteater Poker server started.\n");
     printf("Table: %s\n", config.table_name);
