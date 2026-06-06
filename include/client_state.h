@@ -57,6 +57,9 @@ typedef struct {
     /* Current pot amount received from the server. */
     int pot;
 
+    /* Total amount in side pots received from the server. */
+    int side_pot;
+
     /* Seat number of the current player whose turn it is. */
     int current_turn;
 

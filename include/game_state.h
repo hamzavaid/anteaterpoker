@@ -52,6 +52,7 @@ typedef struct {
     char name[MAX_NAME_LEN];
     int points;
     int current_bet;
+    int total_bet;
     Card hand[PRIVATE_HAND_SIZE];
     AbilityCard ability;
     PlayerStatus status;
@@ -81,6 +82,7 @@ typedef struct {
     int community_count;
     int last_winner_seat;
     int last_winning_hand_rank;
+    char last_winner_text[256];
 } GameState;
 
 void init_server_config(ServerConfig *config);

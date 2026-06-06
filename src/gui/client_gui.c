@@ -28,6 +28,7 @@ static GtkWidget* g_name_label = NULL;
 static GtkWidget* g_status_label = NULL;
 static GtkWidget* g_winner_label = NULL;
 static GtkWidget* g_pot_label = NULL;
+static GtkWidget* g_side_pot_label = NULL;
 static GtkWidget* g_stack_label = NULL;
 static GtkWidget* g_my_avatar_box = NULL;
 static int g_my_seat = -1;
@@ -345,6 +346,14 @@ void poker_gui_set_pot(int amount)
     char buf[64];
     snprintf(buf, sizeof buf, "%d", amount);
     gtk_label_set_text(GTK_LABEL(g_pot_label), buf);
+}
+
+void poker_gui_set_side_pot(int amount)
+{
+    if (!g_side_pot_label) return;
+    char buf[64];
+    snprintf(buf, sizeof buf, "%d", amount);
+    gtk_label_set_text(GTK_LABEL(g_side_pot_label), buf);
 }
 
 void poker_gui_set_stack(int amount)
@@ -951,6 +960,12 @@ static GtkWidget* build_center_panel(void)
     g_pot_label = gtk_label_new("0");
     gtk_widget_set_name(g_pot_label, "pot_total");
     gtk_box_pack_start(GTK_BOX(pot_box), g_pot_label, FALSE, FALSE, 0);
+    GtkWidget* side_pot_title = gtk_label_new("SIDE POT");
+    gtk_widget_set_name(side_pot_title, "pot_label_title");
+    gtk_box_pack_start(GTK_BOX(pot_box), side_pot_title, FALSE, FALSE, 0);
+    g_side_pot_label = gtk_label_new("0");
+    gtk_widget_set_name(g_side_pot_label, "pot_total");
+    gtk_box_pack_start(GTK_BOX(pot_box), g_side_pot_label, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(comm_area), pot_box, FALSE, FALSE, 0);
 
     GtkWidget* cards_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);

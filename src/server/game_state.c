@@ -91,6 +91,7 @@ void init_game_state(GameState *game, const ServerConfig *config, int server_fd)
     game->community_count = 0;
     game->last_winner_seat = -1;
     game->last_winning_hand_rank = -1;
+    game->last_winner_text[0] = '\0';
     for (int i = 0; i < MAX_PLAYERS; i++) {
         game->acted_this_round[i] = 0;
     }
@@ -105,6 +106,7 @@ void init_game_state(GameState *game, const ServerConfig *config, int server_fd)
         game->players[i].name[0] = '\0';
         game->players[i].points = config->starting_points;
         game->players[i].current_bet = 0;
+        game->players[i].total_bet = 0;
         game->players[i].status = PLAYER_EMPTY;
 
         /* Reset each player's Anteater ability card. */
@@ -215,6 +217,7 @@ void remove_player(GameState *game, int seat)
         player->name[0] = '\0';
         player->points = game->config.starting_points;
         player->current_bet = 0;
+        player->total_bet = 0;
         player->status = PLAYER_EMPTY;
         player->ability.type = ABILITY_NONE;
 
@@ -231,10 +234,12 @@ void remove_player(GameState *game, int seat)
             game->community_count = 0;
             game->last_winner_seat = -1;
             game->last_winning_hand_rank = -1;
+            game->last_winner_text[0] = '\0';
 
             for (int i = 0; i < MAX_PLAYERS; i++) {
                 game->acted_this_round[i] = 0;
                 game->players[i].current_bet = 0;
+                game->players[i].total_bet = 0;
                 game->players[i].ability.type = ABILITY_NONE;
                 game->players[i].ability.used = 0;
                 game->players[i].ability.target_seat = -1;
@@ -279,6 +284,7 @@ void start_new_hand(GameState *game)
     game->community_count = 0;
     game->last_winner_seat = -1;
     game->last_winning_hand_rank = -1;
+    game->last_winner_text[0] = '\0';
     for (int i = 0; i < MAX_PLAYERS; i++) {
         game->acted_this_round[i] = 0;
     }
@@ -293,6 +299,7 @@ void start_new_hand(GameState *game)
         if (game->players[i].status != PLAYER_EMPTY) {
             game->players[i].status = PLAYER_ACTIVE;
             game->players[i].current_bet = 0;
+            game->players[i].total_bet = 0;
             game->players[i].ability.used = 0;
             game->players[i].ability.owner_seat = i;
             game->players[i].ability.target_seat = -1;
@@ -481,6 +488,43 @@ const char *ability_to_string(AbilityType ability)
  * Format:
  *   STAT:-1:phase=<phase>;players=<count>;pot=<pot>;turn=<seat>;community=<count>;community_cards=<card1>,<card2>,...
  */
+
+static int calculate_side_pot_total(const GameState *game)
+{
+    if (game == NULL) {
+        return 0;
+    }
+
+    int total = 0;
+    int contributors = 0;
+    int min_bet = -1;
+
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        int bet = game->players[i].total_bet;
+        if (bet > 0) {
+            total += bet;
+            contributors++;
+            if (min_bet < 0 || bet < min_bet) {
+                min_bet = bet;
+            }
+        }
+    }
+
+    if (contributors <= 0 || min_bet <= 0) {
+        return 0;
+    }
+
+    int main_pot = min_bet * contributors;
+    if (main_pot < 0) {
+        main_pot = 0;
+    }
+    if (main_pot > total) {
+        main_pot = total;
+    }
+
+    return total - main_pot;
+}
+
 void build_public_game_state(const GameState *game, char *buffer, int buffer_size)
 {
     if (game == NULL || buffer == NULL || buffer_size <= 0) {
@@ -492,6 +536,7 @@ void build_public_game_state(const GameState *game, char *buffer, int buffer_siz
     char showdown_cards[512] = "";
     const char *winner_hand = "";
     int visible_players = 0;
+    int side_pot = calculate_side_pot_total(game);
     for (int i = 0; i < game->community_count; i++) {
         char card_str[64];
         card_to_string(game->community_cards[i], card_str, sizeof(card_str));
@@ -529,16 +574,18 @@ void build_public_game_state(const GameState *game, char *buffer, int buffer_siz
                 sizeof(player_summary) - strlen(player_summary) - 1);
     }
 
-    if (game->phase == PHASE_GAME_OVER &&
-        game->community_count == COMMUNITY_CARD_SIZE &&
-        game->last_winner_seat >= 0)
+    if (game->phase == PHASE_SHOWDOWN || game->phase == PHASE_GAME_OVER)
     {
-        if (game->last_winning_hand_rank >= HAND_RANK_HIGH_CARD &&
+        /* If a full community is present, the recorded winning hand rank is meaningful. */
+        if (game->community_count == COMMUNITY_CARD_SIZE &&
+            game->last_winning_hand_rank >= HAND_RANK_HIGH_CARD &&
             game->last_winning_hand_rank <= HAND_RANK_STRAIGHT_FLUSH)
         {
             winner_hand = poker_hand_rank_to_string((PokerHandRank)game->last_winning_hand_rank);
         }
 
+        /* Include private cards for any non-empty seats so clients can reveal them at hand end.
+         * This applies even when the hand ended early due to folds (community_count < 5). */
         for (int i = 0; i < MAX_PLAYERS; i++) {
             const Player *player = &game->players[i];
             char card1[64];
@@ -550,6 +597,7 @@ void build_public_game_state(const GameState *game, char *buffer, int buffer_siz
                 continue;
             }
 
+            /* If both private cards are invalid, nothing to reveal. */
             if (!is_valid_card(player->hand[0]) && !is_valid_card(player->hand[1])) {
                 continue;
             }
@@ -579,13 +627,15 @@ void build_public_game_state(const GameState *game, char *buffer, int buffer_siz
     snprintf(
         buffer,
         buffer_size,
-        "STAT:-1:phase=%s;players=%d;pot=%d;turn=%d;winner=%d;community=%d;community_cards=%s;winner_hand=%s;showdown_cards=%s;player_state=%s\n",
+        "STAT:-1:phase=%s;players=%d;pot=%d;sidepot=%d;turn=%d;winner=%d;community=%d;winner_text=%s;community_cards=%s;winner_hand=%s;showdown_cards=%s;player_state=%s\n",
         game_phase_to_string(game->phase),
         visible_players,
         game->pot,
+        side_pot,
         game->current_turn,
         game->last_winner_seat,
         game->community_count,
+        game->last_winner_text,
         community_cards,
         winner_hand,
         showdown_cards,

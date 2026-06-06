@@ -55,7 +55,8 @@ int poker_action_is_legal(const GameState *game, int seat, const char *action, i
     }
     if (strcmp(action, "CALL") == 0) {
         int to_call = game->current_bet - player->current_bet;
-        return to_call > 0 && player->points >= to_call;
+        /* Allow calling by going all-in (partial call) when player doesn't have full amount. */
+        return to_call > 0 && player->points > 0;
     }
     if (strcmp(action, "RAISE") == 0) {
         int new_total = raise_amount;
@@ -82,15 +83,25 @@ int poker_apply_action(GameState *game, int seat, const char *action, int raise_
         game->acted_this_round[seat] = 1;
     } else if (strcmp(action, "CALL") == 0) {
         int to_call = game->current_bet - player->current_bet;
-        player->points -= to_call;
-        player->current_bet += to_call;
-        game->pot += to_call;
+        int actual = to_call;
+        if (player->points < actual) {
+            actual = player->points; /* all-in partial call */
+        }
+        player->points -= actual;
+        player->current_bet += actual;
+        player->total_bet += actual;
+        game->pot += actual;
         game->acted_this_round[seat] = 1;
     } else if (strcmp(action, "RAISE") == 0) {
         int cost = raise_amount - player->current_bet;
-        player->points -= cost;
-        player->current_bet = raise_amount;
-        game->pot += cost;
+        int actual = cost;
+        if (player->points < actual) {
+            actual = player->points; /* should not happen if legality enforced, but guard */
+        }
+        player->points -= actual;
+        player->current_bet = player->current_bet + actual;
+        player->total_bet += actual;
+        game->pot += actual;
         game->current_bet = raise_amount;
         /* A raise reopens action for everyone else still in the hand. */
         for (int i = 0; i < MAX_PLAYERS; i++) {
@@ -180,41 +191,187 @@ void poker_advance_phase(GameState *game)
 
 void poker_resolve_showdown(GameState *game)
 {
-    if (game == NULL) {
+    if (game == NULL) return;
+
+    game->last_winner_text[0] = '\0';
+
+    /* Build list of distinct contribution levels from players' total_bet. */
+    int contrib[MAX_PLAYERS];
+    int levels[MAX_PLAYERS];
+    int nlevels = 0;
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        contrib[i] = game->players[i].total_bet;
+        if (contrib[i] > 0) {
+            int found = 0;
+            for (int j = 0; j < nlevels; j++) {
+                if (levels[j] == contrib[i]) { found = 1; break; }
+            }
+            if (!found) levels[nlevels++] = contrib[i];
+        }
+    }
+
+    if (nlevels == 0) {
+        /* No contributions? nothing to do. */
+        game->pot = 0;
+        game->current_turn = -1;
+        game->phase = PHASE_GAME_OVER;
         return;
     }
 
-    int winners[MAX_PLAYERS];
-    int count = poker_find_showdown_winners(game, winners, MAX_PLAYERS);
-
-    if (count > 0) {
-        Card cards[7];
-        PokerHandValue winning_value;
-
-        /* Record the first winner for client display. */
-        game->last_winner_seat = winners[0];
-        cards[0] = game->players[winners[0]].hand[0];
-        cards[1] = game->players[winners[0]].hand[1];
-        for (int c = 0; c < COMMUNITY_CARD_SIZE; c++) {
-            cards[c + 2] = game->community_cards[c];
+    /* Sort levels ascending (simple selection sort - small arrays). */
+    for (int i = 0; i < nlevels - 1; i++) {
+        int min = i;
+        for (int j = i + 1; j < nlevels; j++) {
+            if (levels[j] < levels[min]) min = j;
         }
-        poker_evaluate_hand(cards, &winning_value);
-        game->last_winning_hand_rank = winning_value.rank;
-
-        /* Split ties evenly; the first winner receives any odd remainder. */
-        int share = game->pot / count;
-        int remainder = game->pot % count;
-        for (int i = 0; i < count; i++) {
-            game->players[winners[i]].points += share;
-            if (i == 0) {
-                game->players[winners[i]].points += remainder;
-            }
+        if (min != i) {
+            int t = levels[i]; levels[i] = levels[min]; levels[min] = t;
         }
     }
 
+    int prev = 0;
+    int last_winner = -1;
+    int last_winning_rank = -1;
+    int summary_len = 0;
+
+    for (int li = 0; li < nlevels; li++) {
+        int level = levels[li];
+        int contributors = 0;
+        for (int i = 0; i < MAX_PLAYERS; i++) {
+            if (contrib[i] >= level) contributors++;
+        }
+        if (contributors == 0) continue;
+
+        int pot_amount = (level - prev) * contributors;
+
+        /* Build list of contenders eligible for this pot: active (not folded) players with contrib >= level */
+        int contenders[MAX_PLAYERS];
+        int ncont = 0;
+        for (int i = 0; i < MAX_PLAYERS; i++) {
+            if (game->players[i].status == PLAYER_ACTIVE && contrib[i] >= level) {
+                contenders[ncont++] = i;
+            }
+        }
+
+        /* If there are no active contenders for this pot (rare), include any contributor */
+        if (ncont == 0) {
+            for (int i = 0; i < MAX_PLAYERS; i++) {
+                if (contrib[i] >= level) contenders[ncont++] = i;
+            }
+        }
+
+        if (ncont == 0) {
+            /* Still nothing - skip */
+            prev = level;
+            continue;
+        }
+
+        /* Determine winners among contenders */
+        int winners[MAX_PLAYERS];
+        int winner_count = 0;
+        PokerHandValue best;
+        int found = 0;
+
+        for (int ci = 0; ci < ncont; ci++) {
+            int seat = contenders[ci];
+            Card cards[7];
+            cards[0] = game->players[seat].hand[0];
+            cards[1] = game->players[seat].hand[1];
+            for (int c = 0; c < COMMUNITY_CARD_SIZE; c++) {
+                cards[c + 2] = game->community_cards[c];
+            }
+
+            PokerHandValue value;
+            poker_evaluate_hand(cards, &value);
+
+            if (!found || poker_compare_hands(&value, &best) > 0) {
+                best = value;
+                winners[0] = seat;
+                winner_count = 1;
+                found = 1;
+            } else if (poker_compare_hands(&value, &best) == 0 && winner_count < MAX_PLAYERS) {
+                winners[winner_count++] = seat;
+            }
+        }
+
+        if (winner_count > 0) {
+            int share = pot_amount / winner_count;
+            int remainder = pot_amount % winner_count;
+            for (int wi = 0; wi < winner_count; wi++) {
+                game->players[winners[wi]].points += share;
+                if (wi == 0) game->players[winners[wi]].points += remainder;
+            }
+
+            if (summary_len < (int)sizeof(game->last_winner_text) - 1) {
+                int wrote = 0;
+                if (winner_count == 1) {
+                    wrote = snprintf(
+                        game->last_winner_text + summary_len,
+                        sizeof(game->last_winner_text) - (size_t)summary_len,
+                        "%sSeat %d wins %d",
+                        summary_len > 0 ? "; " : "",
+                        winners[0] + 1,
+                        pot_amount
+                    );
+                } else {
+                    wrote = snprintf(
+                        game->last_winner_text + summary_len,
+                        sizeof(game->last_winner_text) - (size_t)summary_len,
+                        "%sSeats",
+                        summary_len > 0 ? "; " : ""
+                    );
+                    if (wrote > 0) {
+                        summary_len += wrote;
+                        for (int wi = 0; wi < winner_count && summary_len < (int)sizeof(game->last_winner_text) - 1; wi++) {
+                            wrote = snprintf(
+                                game->last_winner_text + summary_len,
+                                sizeof(game->last_winner_text) - (size_t)summary_len,
+                                "%s%d",
+                                (wi == 0) ? " " : ",",
+                                winners[wi] + 1
+                            );
+                            if (wrote > 0) {
+                                summary_len += wrote;
+                            }
+                        }
+                        if (summary_len < (int)sizeof(game->last_winner_text) - 1) {
+                            wrote = snprintf(
+                                game->last_winner_text + summary_len,
+                                sizeof(game->last_winner_text) - (size_t)summary_len,
+                                " split %d",
+                                pot_amount
+                            );
+                        }
+                    }
+                }
+                if (wrote > 0) {
+                    summary_len += wrote;
+                    if (summary_len >= (int)sizeof(game->last_winner_text)) {
+                        summary_len = (int)sizeof(game->last_winner_text) - 1;
+                        game->last_winner_text[summary_len] = '\0';
+                    }
+                }
+            }
+
+            /* record last (highest-level) winner info for client display */
+            last_winner = winners[0];
+            last_winning_rank = best.rank;
+        }
+
+        prev = level;
+    }
+
+    /* Clear pot and bookkeeping */
     game->pot = 0;
     game->current_turn = -1;
     game->phase = PHASE_GAME_OVER;
+    if (last_winner >= 0) {
+        game->last_winner_seat = last_winner;
+        game->last_winning_hand_rank = last_winning_rank;
+    }
+    if (game->last_winner_text[0] == '\0' && last_winner >= 0) {
+        snprintf(game->last_winner_text, sizeof(game->last_winner_text), "Seat %d wins the hand", last_winner + 1);
+    }
 }
 
 int poker_find_showdown_winners(const GameState *game, int winners[], int max_winners)

@@ -7,6 +7,7 @@ void launch_poker_window(int server_fd);
 // call these from poker.c when server messages arrive
 void poker_gui_set_name(const char *name);
 void poker_gui_set_pot(int amount);
+void poker_gui_set_side_pot(int amount);
 void poker_gui_set_stack(int amount);
 void poker_gui_set_status(const char *msg);
 void poker_gui_set_winner(const char *winner_msg);

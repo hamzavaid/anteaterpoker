@@ -41,6 +41,9 @@ void init_client_state(ClientState *client)
     /* No pot exists before the game starts. */
     client->pot = 0;
 
+    /* No side pot exists before the game starts. */
+    client->side_pot = 0;
+
     /* No current turn exists before the game starts. */
     client->current_turn = -1;
 
@@ -114,6 +117,7 @@ void print_client_state(const ClientState *client)
     /* Print public game state information. */
     printf("Phase: %s\n", game_phase_to_string(client->phase));
     printf("Pot: %d\n", client->pot);
+    printf("Side Pot: %d\n", client->side_pot);
     printf("Current Turn: %d\n", client->current_turn);
     printf("Players: %d\n", client->player_count);
     printf("Community Cards: %d\n", client->community_count);
