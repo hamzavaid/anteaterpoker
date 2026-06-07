@@ -46,6 +46,10 @@ static GtkWidget* g_action_card_alert = NULL;
 static GtkWidget* g_comm_card_img[MAX_COMM_CARDS];
 static GtkWidget* g_my_card_img[2];
 
+static GtkWidget *g_lobby_win        = NULL;
+static GtkWidget *g_main_win         = NULL;
+static GtkWidget *g_lobby_list_box   = NULL;
+
 //Opponent Slot struct to hold widgets for each opponent's display (name, bet, avatar, cards)
 typedef struct {
     int seat;
@@ -296,6 +300,131 @@ static const char* POKER_CSS =
 "  background-color: #153a5c;"
 "  border-color: #3a8abf;"
 "}";
+
+static const char *LOBBY_CSS =
+    "#lobby_win {"
+    "  background-color: #0a1520;"
+    "}"
+    "#lobby_title {"
+    "  color: #7ab8e8;"
+    "  font-size: 22px;"
+    "  font-weight: bold;"
+    "  letter-spacing: 6px;"
+    "}"
+    "#lobby_subtitle {"
+    "  color: #1e4a6e;"
+    "  font-size: 9px;"
+    "  letter-spacing: 3px;"
+    "}"
+    "#lobby_status {"
+    "  color: #d4b830;"
+    "  font-size: 12px;"
+    "  font-weight: bold;"
+    "  letter-spacing: 2px;"
+    "}"
+	"#lobby_player_row {"
+    "  background-color: rgba(20,40,60,0.9);"
+    "  border: 1px solid #1e4a6e;"
+    "  border-radius: 6px;"
+    "  padding: 4px 10px;"
+    "}"
+    "#lobby_player_name {"
+    "  color: #dce3ec;"
+    "  font-size: 13px;"
+    "  font-weight: bold;"
+    "}"
+    "#lobby_player_seat {"
+    "  color: #5a9ac0;"
+    "  font-size: 10px;"
+    "}"
+    "#lobby_empty_slot {"
+    "  color: #2d4a5a;"
+    "  font-size: 10px;"
+    "  font-style: italic;"
+    "}";
+
+//builds row in player list
+static GtkWidget *build_lobby_player_row(int seat, const char *name, int connected)
+{
+    GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_widget_set_name(row, "lobby_player_row");
+    gtk_widget_set_margin_top(row, 3);
+    gtk_widget_set_margin_bottom(row, 3);
+    gtk_widget_set_margin_start(row, 6);
+    gtk_widget_set_margin_end(row, 6);
+
+    char seat_buf[16];
+    snprintf(seat_buf, sizeof(seat_buf), "Seat %d", seat + 1);
+    GtkWidget *seat_lbl = gtk_label_new(seat_buf);
+    gtk_widget_set_name(seat_lbl, "lobby_player_seat");
+    gtk_widget_set_size_request(seat_lbl, 55, -1);
+    gtk_label_set_xalign(GTK_LABEL(seat_lbl), 0.0f);
+    gtk_box_pack_start(GTK_BOX(row), seat_lbl, FALSE, FALSE, 0);
+
+    GtkWidget *bullet = gtk_label_new(connected ? "●" : "○");
+    gtk_widget_set_name(bullet, connected ? "lobby_player_name" : "lobby_empty_slot");
+    gtk_box_pack_start(GTK_BOX(row), bullet, FALSE, FALSE, 2);
+
+    GtkWidget *name_lbl = gtk_label_new(connected ? name : "waiting...");
+    gtk_widget_set_name(name_lbl, connected ? "lobby_player_name" : "lobby_empty_slot");
+    gtk_label_set_xalign(GTK_LABEL(name_lbl), 0.0f);
+    gtk_box_pack_start(GTK_BOX(row), name_lbl, TRUE, TRUE, 0);
+
+    return row;
+}
+
+void poker_gui_lobby_update_players(const char *player_state)
+{
+    if (g_lobby_list_box == NULL) return;
+
+    // remove all existing rows before rebuilding
+    GList *children = gtk_container_get_children(GTK_CONTAINER(g_lobby_list_box));
+    for (GList *l = children; l != NULL; l = l->next)
+        gtk_widget_destroy(GTK_WIDGET(l->data));
+    g_list_free(children);
+
+    if (player_state == NULL || player_state[0] == '\0') return;
+
+    char copy[512];
+    snprintf(copy, sizeof(copy), "%s", player_state);
+    char *saveptr = NULL;
+    char *entry = strtok_r(copy, ",", &saveptr);
+
+    while (entry != NULL)
+    {
+        int seat = -1, points = 0, bet = 0, status = 0;
+        char name[MAX_NAME_LEN];
+        name[0] = '\0';
+
+        if (sscanf(entry, "%d|%31[^|]|%d|%d|%d",
+                   &seat, name, &points, &bet, &status) == 5)
+        {
+            int connected = (status != PLAYER_EMPTY);
+            GtkWidget *row = build_lobby_player_row(seat, name, connected);
+            gtk_box_pack_start(GTK_BOX(g_lobby_list_box), row, FALSE, FALSE, 0);
+            gtk_widget_show_all(row);
+        }
+
+        entry = strtok_r(NULL, ",", &saveptr);
+    }
+}
+
+//closes lobby window
+void poker_gui_close_lobby(void)
+{
+    if (g_lobby_win != NULL)
+    {
+        gtk_widget_hide(g_lobby_win);
+        gtk_widget_destroy(g_lobby_win);
+        g_lobby_win        = NULL;
+        g_lobby_list_box   = NULL;
+    }
+
+    if (g_main_win != NULL)
+    {
+        gtk_widget_show_all(g_main_win);
+    }
+}
 
 //Update functions, call these from network/game code
 void poker_gui_set_name(const char *name)
@@ -1023,6 +1152,64 @@ static GtkWidget* build_center_panel(void)
     return vbox;
 }
 
+void launch_lobby_window(void)
+{
+    GtkCssProvider *css = gtk_css_provider_new();
+    gtk_css_provider_load_from_data(css, LOBBY_CSS, -1, NULL);
+    gtk_style_context_add_provider_for_screen(
+        gdk_screen_get_default(),
+        GTK_STYLE_PROVIDER(css),
+        GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    g_object_unref(css);
+
+    g_lobby_win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    gtk_widget_set_name(g_lobby_win, "lobby_win");
+    gtk_window_set_title(GTK_WINDOW(g_lobby_win), "Anteater Poker — Lobby");
+    gtk_window_set_default_size(GTK_WINDOW(g_lobby_win), 380, 420);
+    gtk_window_set_resizable(GTK_WINDOW(g_lobby_win), FALSE);
+    gtk_window_set_position(GTK_WINDOW(g_lobby_win), GTK_WIN_POS_CENTER);
+    // closing the lobby window quits the whole app
+    g_signal_connect(g_lobby_win, "destroy", G_CALLBACK(gtk_main_quit), NULL);
+    gtk_container_set_border_width(GTK_CONTAINER(g_lobby_win), 18);
+
+    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+    gtk_container_add(GTK_CONTAINER(g_lobby_win), vbox);
+
+    GtkWidget *title = gtk_label_new("ANTEATER POKER");
+    gtk_widget_set_name(title, "lobby_title");
+    gtk_label_set_xalign(GTK_LABEL(title), 0.5f);
+    gtk_box_pack_start(GTK_BOX(vbox), title, FALSE, FALSE, 0);
+
+    GtkWidget *sub = gtk_label_new("LOBBY");
+    gtk_widget_set_name(sub, "lobby_subtitle");
+    gtk_label_set_xalign(GTK_LABEL(sub), 0.5f);
+    gtk_box_pack_start(GTK_BOX(vbox), sub, FALSE, FALSE, 0);
+
+    GtkWidget *sep = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
+    gtk_box_pack_start(GTK_BOX(vbox), sep, FALSE, FALSE, 6);
+
+    g_lobby_status_lbl = gtk_label_new("AWAITING PLAYERS");
+    gtk_widget_set_name(g_lobby_status_lbl, "lobby_status");
+    gtk_label_set_xalign(GTK_LABEL(g_lobby_status_lbl), 0.5f);
+    gtk_box_pack_start(GTK_BOX(vbox), g_lobby_status_lbl, FALSE, FALSE, 4);
+
+    GtkWidget *list_frame = gtk_frame_new(NULL);
+    gtk_frame_set_shadow_type(GTK_FRAME(list_frame), GTK_SHADOW_NONE);
+    gtk_box_pack_start(GTK_BOX(vbox), list_frame, TRUE, TRUE, 4);
+
+    g_lobby_list_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+    gtk_container_set_border_width(GTK_CONTAINER(g_lobby_list_box), 4);
+    gtk_container_add(GTK_CONTAINER(list_frame), g_lobby_list_box);
+
+    GtkWidget *hint = gtk_label_new("The host will start the game when everyone has joined.");
+    gtk_label_set_line_wrap(GTK_LABEL(hint), TRUE);
+    gtk_label_set_justify(GTK_LABEL(hint), GTK_JUSTIFY_CENTER);
+    gtk_widget_set_name(hint, "lobby_empty_slot");
+    gtk_box_pack_end(GTK_BOX(vbox), hint, FALSE, FALSE, 4);
+
+    gtk_widget_show_all(g_lobby_win);
+}
+
 void launch_poker_window(int server_fd)
 {
 	g_server_fd = server_fd;
@@ -1036,6 +1223,7 @@ void launch_poker_window(int server_fd)
     g_object_unref(css);
 
     GtkWidget* win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+	g_main_win = win;
     gtk_widget_set_name(win, "poker_window");
     gtk_window_set_title(GTK_WINDOW(win), "Anteater Poker");
     gtk_window_set_default_size(GTK_WINDOW(win), 1400, 700);
@@ -1062,5 +1250,4 @@ void launch_poker_window(int server_fd)
     gtk_box_pack_start(GTK_BOX(root), build_right_panel(),  FALSE, FALSE, 0);
 
     poker_gui_set_status("Waiting for players...");
-    gtk_widget_show_all(win);
 }
