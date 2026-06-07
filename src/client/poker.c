@@ -351,12 +351,42 @@ static void parse_stat_message(ClientState *client, const char *message)
 
     if (matched == 7)
     {
+        GamePhase prev_phase = client->phase;
+
         client->phase = phase_from_string(phase_text);
         client->player_count = players;
         client->pot = pot;
         client->side_pot = side_pot;
         client->current_turn = turn;
         client->community_count = community;
+
+        //get player_state so the lobby window can show who has connected
+        char lobby_player_tmp[512];
+        lobby_player_tmp[0] = '\0';
+        const char *ps_ptr = strstr(message, "player_state=");
+        if (ps_ptr)
+        {
+            ps_ptr += strlen("player_state=");
+            const char *ps_end = strchr(ps_ptr, '\n');
+            int ps_len = ps_end ? (int)(ps_end - ps_ptr) : (int)strlen(ps_ptr);
+            if (ps_len >= (int)sizeof(lobby_player_tmp))
+                ps_len = sizeof(lobby_player_tmp) - 1;
+            memcpy(lobby_player_tmp, ps_ptr, ps_len);
+            lobby_player_tmp[ps_len] = '\0';
+        }
+
+        //while still in lobby, refresh the player list in the lobby window
+        if (client->phase == PHASE_LOBBY)
+        {
+            poker_gui_lobby_update_players(lobby_player_tmp[0] ? lobby_player_tmp : NULL);
+        }
+
+        // host clicked Start New Hand: close lobby, reveal main game window
+        if (prev_phase == PHASE_LOBBY && client->phase != PHASE_LOBBY)
+        {
+            poker_gui_close_lobby();
+        }
+
 
         // parse optional community card list
         const char *p = strstr(message, "community_cards=");
@@ -830,6 +860,9 @@ int main(int argc, char *argv[])
     GIOChannel *channel = g_io_channel_unix_new(g_client.socket_fd);
     g_io_add_watch(channel, G_IO_IN, on_server_readable, NULL);
     g_io_channel_unref(channel);
+
+    //launches lobby for awaiting players
+    launch_lobby_window();
 
     // launch GUI — passes socket fd so button callbacks can send to server
     launch_poker_window(g_client.socket_fd);
