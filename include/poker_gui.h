@@ -1,6 +1,15 @@
 #ifndef POKER_GUI_H
 #define POKER_GUI_H
  
+// Call launch_lobby_window() before launch_poker_window() in main().
+// The lobby shows a small waiting screen while players join.
+// It closes automatically when the server transitions out of LOBBY phase.
+void launch_lobby_window(void);
+// Call this every time a new player joins to refresh player list
+void poker_gui_lobby_update_players(const char *player_state);
+// Call this to close lobby window
+void poker_gui_close_lobby(void);
+
 // call once after connecting to server
 void launch_poker_window(int server_fd);
  
