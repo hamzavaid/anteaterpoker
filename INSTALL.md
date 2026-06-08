@@ -13,14 +13,20 @@
 Unpack the user package:
 
 ```sh
-gtar xvzf Poker_Beta.tar.gz
-cd Poker_Beta
+gtar xvzf Poker_V1.0.tar.gz
+cd Poker_V1.0
 ```
 
 Run the server:
 
 ```sh
 ./bin/poker_server --port 10010 --table "ZotHouse" &
+```
+
+If you'd like to add bots, run the server with the `--bots` option alongside the number of bots you want to add:
+
+```sh
+./bin/poker_server --port 10010 --table "ZotHouse" & --bots 2
 ```
 
 Run a client:
@@ -36,8 +42,8 @@ Replace server_name_or_ip with the actual host name or IP address of the server,
 Unpack and build from source:
 
 ```sh
-gtar xvzf Poker_Beta_src.tar.gz
-cd Poker_Beta_src
+gtar xvzf Poker_V1.0_src.tar.gz
+cd Poker_V1.0_src
 make
 ```
 

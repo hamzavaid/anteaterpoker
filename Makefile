@@ -36,7 +36,7 @@ BIN_DIR = bin
 BUILD_DIR = build
 DIST_DIR = dist
 
-# Output programs required by beta rubric
+# Output programs required by project rubric
 SERVER_BIN = $(BIN_DIR)/poker_server
 CLIENT_BIN = $(BIN_DIR)/poker_client
 
@@ -48,9 +48,9 @@ LEGACY_CLIENT_BIN = $(BIN_DIR)/poker
 TEST_DECK_BIN = $(BIN_DIR)/test_deck
 TEST_SERVER_CLIENT_BIN = $(BIN_DIR)/test_server_client
 
-# Archive names required by beta rubric
-USER_ARCHIVE = Poker_Beta.tar.gz
-SRC_ARCHIVE = Poker_Beta_src.tar.gz
+# Archive names required by project rubric
+USER_ARCHIVE = Poker_V1.0.tar.gz
+SRC_ARCHIVE = Poker_V1.0_src.tar.gz
 
 # Shared rule objects
 RULES_OBJ = \
@@ -182,35 +182,35 @@ tar: source-tar user-tar
 
 # Source-code package.
 source-tar: check-docs
-	rm -rf $(DIST_DIR)/Poker_Beta_src
-	mkdir -p $(DIST_DIR)/Poker_Beta_src
-	mkdir -p $(DIST_DIR)/Poker_Beta_src/bin
-	cp README.md INSTALL.md COPYRIGHT.md Makefile $(DIST_DIR)/Poker_Beta_src/
-	cp -R include src test doc $(DIST_DIR)/Poker_Beta_src/
-	tar -czf $(SRC_ARCHIVE) -C $(DIST_DIR) Poker_Beta_src
-	rm -rf $(DIST_DIR)/Poker_Beta_src
+	rm -rf $(DIST_DIR)/Poker_V1.0_src
+	mkdir -p $(DIST_DIR)/Poker_V1.0_src
+	mkdir -p $(DIST_DIR)/Poker_V1.0_src/bin
+	cp README.md INSTALL.md COPYRIGHT.md Makefile $(DIST_DIR)/Poker_V1.0_src/
+	cp -R include src test doc $(DIST_DIR)/Poker_V1.0_src/
+	tar -czf $(SRC_ARCHIVE) -C $(DIST_DIR) Poker_V1.0_src
+	rm -rf $(DIST_DIR)/Poker_V1.0_src
 	@echo "Created $(SRC_ARCHIVE)"
 
 # User/customer binary package.
 user-tar: all check-docs
-	rm -rf $(DIST_DIR)/Poker_Beta
-	mkdir -p $(DIST_DIR)/Poker_Beta/bin
-	mkdir -p $(DIST_DIR)/Poker_Beta/doc
-	cp README.md $(DIST_DIR)/Poker_Beta/README.md
-	cp INSTALL.md $(DIST_DIR)/Poker_Beta/INSTALL.md
-	cp COPYRIGHT.md $(DIST_DIR)/Poker_Beta/COPYRIGHT.md
-	cp $(SERVER_BIN) $(DIST_DIR)/Poker_Beta/bin/poker_server
-	cp $(CLIENT_BIN) $(DIST_DIR)/Poker_Beta/bin/poker_client
-	cp doc/Poker_UserManual.pdf $(DIST_DIR)/Poker_Beta/doc/Poker_UserManual.pdf
+	rm -rf $(DIST_DIR)/Poker_V1.0
+	mkdir -p $(DIST_DIR)/Poker_V1.0/bin
+	mkdir -p $(DIST_DIR)/Poker_V1.0/doc
+	cp README.md $(DIST_DIR)/Poker_V1.0/README.md
+	cp INSTALL.md $(DIST_DIR)/Poker_V1.0/INSTALL.md
+	cp COPYRIGHT.md $(DIST_DIR)/Poker_V1.0/COPYRIGHT.md
+	cp $(SERVER_BIN) $(DIST_DIR)/Poker_V1.0/bin/poker_server
+	cp $(CLIENT_BIN) $(DIST_DIR)/Poker_V1.0/bin/poker_client
+	cp doc/Poker_UserManual.pdf $(DIST_DIR)/Poker_V1.0/doc/Poker_UserManual.pdf
 
 	# Copy assets if your GUI loads images from src/assets.
 	if [ -d src/assets ]; then \
-		mkdir -p $(DIST_DIR)/Poker_Beta/src; \
-		cp -R src/assets $(DIST_DIR)/Poker_Beta/src/assets; \
+		mkdir -p $(DIST_DIR)/Poker_V1.0/src; \
+		cp -R src/assets $(DIST_DIR)/Poker_V1.0/src/assets; \
 	fi
 
-	tar -czf $(USER_ARCHIVE) -C $(DIST_DIR) Poker_Beta
-	rm -rf $(DIST_DIR)/Poker_Beta
+	tar -czf $(USER_ARCHIVE) -C $(DIST_DIR) Poker_V1.0
+	rm -rf $(DIST_DIR)/Poker_V1.0
 	@echo "Created $(USER_ARCHIVE)"
 
 clean:
