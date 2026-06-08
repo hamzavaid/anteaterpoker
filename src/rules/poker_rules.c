@@ -211,11 +211,9 @@ void poker_resolve_showdown(GameState *game)
     }
 
     if (nlevels == 0) {
-        /* No contributions? nothing to do. */
-        game->pot = 0;
-        game->current_turn = -1;
-        game->phase = PHASE_GAME_OVER;
-        return;
+        // Suppose everybody bet 0, but we still want to show winner
+        levels[0] = 0;
+        nlevels = 1;
     }
 
     /* Sort levels ascending (simple selection sort - small arrays). */

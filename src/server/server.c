@@ -34,6 +34,15 @@
 // global variable for GTK
 static GameState g_game;
 static unsigned int g_autostart_source_id = 0;
+static unsigned int g_bot_timer_id = 0;
+
+/* Quick helper to clear the bot timer if a hand is aborted */
+static void cancel_bot_timer(void) {
+    if (g_bot_timer_id != 0) {
+        g_source_remove(g_bot_timer_id);
+        g_bot_timer_id = 0;
+    }
+}
 
 /* Forward declarations for autostart helpers (defined below). */
 void schedule_autostart(GameState *game);
@@ -212,10 +221,16 @@ void send_private_hands_to_all(GameState *game)
  * If so, calls the bot AI to decide an action and applies it.
  * Loops until a human player's turn or hand ends.
  */
-static void server_auto_play_bot_turns(GameState *game)
+/* This executes ONE bot turn when the timer fires */
+static gboolean bot_turn_cb(gpointer data)
 {
+    GameState *game = (GameState *)data;
+    
+    /* Clear the timer ID since it is firing now */
+    g_bot_timer_id = 0;
+
     if (game == NULL || game->current_turn < 0) {
-        return;
+        return FALSE;
     }
 
     while (game->current_turn >= 0 && game->current_turn < MAX_PLAYERS) {
@@ -223,7 +238,7 @@ static void server_auto_play_bot_turns(GameState *game)
 
         /* Check if this seat is a bot (socket_fd == -1) */
         if (player->status != PLAYER_ACTIVE || player->socket_fd >= 0) {
-            break; /* Human player or empty seat */
+            return FALSE; /* Human player or empty seat */
         }
 
         /* Build a bot state from game state */
@@ -267,10 +282,30 @@ static void server_auto_play_bot_turns(GameState *game)
             poker_apply_action(game, game->current_turn, decision, 0);
         }
 
+        if (game->phase == PHASE_GAME_OVER) {
+            schedule_autostart(game);
+        }
+
         /* Update GUI after bot action */
         send_public_state_to_all(game);
         send_private_hands_to_all(game);
         server_gui_refresh();
+    }
+    return FALSE; /* one-shot timer */
+}
+
+static void server_auto_play_bot_turns(GameState *game)
+{
+    if (game == NULL || game->current_turn < 0) return;
+    
+    Player *player = &game->players[game->current_turn];
+    
+    /* If it's a bot's turn, and we aren't already waiting on a timer... */
+    if (player->status == PLAYER_ACTIVE && player->socket_fd < 0) {
+        if (g_bot_timer_id == 0) {
+            /* 1500 milliseconds = 1.5 second pause */
+            g_bot_timer_id = g_timeout_add(1500, bot_turn_cb, game);
+        }
     }
 }
 
@@ -288,6 +323,7 @@ static gboolean server_autostart_cb(gpointer data)
     g_autostart_source_id = 0;
 
     printf("[SERVER] Auto-start timeout fired: starting new hand\n");
+    cancel_bot_timer();
     start_new_hand(game);
     send_public_state_to_all(game);
     send_private_hands_to_all(game);
@@ -379,6 +415,7 @@ static void handle_client_message(GameState *game, int client_fd, const char *bu
     if (strcmp(msg.command, "START") == 0)
     {
         cancel_autostart(game);
+        cancel_bot_timer();
         start_new_hand(game);
         send_public_state_to_all(game);
         send_private_hands_to_all(game);
@@ -434,6 +471,7 @@ static void handle_client_message(GameState *game, int client_fd, const char *bu
         if (all_ready && game->player_count > 1)
         {
             cancel_autostart(game); /* Safety catch just in case */
+            cancel_bot_timer();
             start_new_hand(game);
             send_public_state_to_all(game);
             send_private_hands_to_all(game);

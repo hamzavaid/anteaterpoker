@@ -299,6 +299,14 @@ void start_new_hand(GameState *game)
     /* Reset player state for the new hand. Any non-empty seat becomes ACTIVE. */
     for (int i = 0; i < MAX_PLAYERS; i++) {
         if (game->players[i].status != PLAYER_EMPTY) {
+
+            // Eliminate players if they have no chips
+            if (game->players[i].points <= 0) {
+                printf("[SERVER] %s eliminated!\n", game->players[i].name);
+                remove_player(game, i);
+                continue; 
+            }
+
             game->players[i].status = PLAYER_ACTIVE;
             game->players[i].current_bet = 0;
             game->players[i].total_bet = 0;
@@ -497,31 +505,41 @@ static int calculate_side_pot_total(const GameState *game)
         return 0;
     }
 
+    int is_all_in = 0;
+    int min_active_bet = -1;
     int total = 0;
-    int contributors = 0;
-    int min_bet = -1;
 
     for (int i = 0; i < MAX_PLAYERS; i++) {
-        int bet = game->players[i].total_bet;
-        if (bet > 0) {
-            total += bet;
-            contributors++;
-            if (min_bet < 0 || bet < min_bet) {
-                min_bet = bet;
+        if (game->players[i].status == PLAYER_ACTIVE) {
+            int bet = game->players[i].total_bet;
+            
+            // If an active player is out of points but has bet, they are all-in
+            if (game->players[i].points == 0 && bet > 0) {
+                is_all_in = 1;
+            }
+
+            // Track the smallest bet made by someone still in the hand
+            if (min_active_bet < 0 || bet < min_active_bet) {
+                min_active_bet = bet;
             }
         }
     }
 
-    if (contributors <= 0 || min_bet <= 0) {
+    // Make sure somebody is still all-in, otherwise stop calculating
+    if (!is_all_in || min_active_bet <= 0) {
         return 0;
     }
 
-    int main_pot = min_bet * contributors;
-    if (main_pot < 0) {
-        main_pot = 0;
-    }
-    if (main_pot > total) {
-        main_pot = total;
+    int main_pot = 0;
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        int bet = game->players[i].total_bet;
+        if (bet > 0) {
+            total += bet;
+            
+            // A player can only win from others exactly what they put in themselves.
+            // Any excess bet from another player goes to the side pot.
+            main_pot += (bet < min_active_bet) ? bet : min_active_bet;
+        }
     }
 
     return total - main_pot;
