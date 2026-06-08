@@ -73,6 +73,12 @@ For developer and design information, see:
 doc/Poker_SoftwareSpec.pdf
 ```
 
+The game has two main components: The client, and the server.
+
+The client starts out as a lobby where players have the option to press a ready button when everyone is ready to play. The game starts once two or more players are ready. 
+
+The server's GUI has a few admin controls like forcing a new hand to start or forcing the flop, turn, or river before betting has concluded. You can also add bots on this menu, but all of these buttons are purely optional since the game can be played entirely through clients alone. 
+
 ## Documentation
 
 User documentation is provided in:
