@@ -26,7 +26,7 @@ Run the server:
 If you'd like to add bots, run the server with the `--bots` option alongside the number of bots you want to add:
 
 ```sh
-./bin/poker_server --port 10010 --table "ZotHouse" & --bots 2
+./bin/poker_server --port 10010 --table "ZotHouse" --bots 2 &
 ```
 
 Run a client:
