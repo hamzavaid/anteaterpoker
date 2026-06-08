@@ -159,6 +159,47 @@ int find_empty_seat(const GameState *game)
  * Returns:
  *   assigned seat number, or -1 if no seat is available.
  */
+int add_player_at(GameState *game, int socket_fd, const char *name, int requested_seat)
+{
+    if (game == NULL || name == NULL) {
+        return -1;
+    }
+
+    if (requested_seat < 0) {
+        requested_seat = find_empty_seat(game);
+    }
+
+    if (requested_seat < 0 || requested_seat >= MAX_PLAYERS) {
+        return -1;
+    }
+
+    Player *player = &game->players[requested_seat];
+    if (player->status != PLAYER_EMPTY) {
+        return -1;
+    }
+
+    /* Fill in basic player information at the requested seat. */
+    player->seat = requested_seat;
+    player->socket_fd = socket_fd;
+    snprintf(player->name, MAX_NAME_LEN, "%s", name);
+    player->points = game->config.starting_points;
+    player->current_bet = 0;
+    player->total_bet = 0;
+    player->player_ready = 0;
+    player->status = PLAYER_CONNECTED;
+
+    /* Player has no ability until a hand starts. */
+    player->ability.type = ABILITY_NONE;
+    player->ability.used = 0;
+    player->ability.owner_seat = requested_seat;
+    player->ability.target_seat = -1;
+    player->ability.param = 0;
+
+    game->player_count++;
+
+    return requested_seat;
+}
+
 int add_player(GameState *game, int socket_fd, const char *name)
 {
     if (game == NULL || name == NULL) {
@@ -172,28 +213,7 @@ int add_player(GameState *game, int socket_fd, const char *name)
         return -1;
     }
 
-    Player *player = &game->players[seat];
-
-    /* Fill in basic player information. */
-    player->seat = seat;
-    player->socket_fd = socket_fd;
-    snprintf(player->name, MAX_NAME_LEN, "%s", name);
-    player->points = game->config.starting_points;
-    player->current_bet = 0;
-    player->total_bet = 0;
-    player->player_ready = 0;
-    player->status = PLAYER_CONNECTED;
-
-    /* Player has no ability until a hand starts. */
-    player->ability.type = ABILITY_NONE;
-    player->ability.used = 0;
-    player->ability.owner_seat = seat;
-    player->ability.target_seat = -1;
-    player->ability.param = 0;
-
-    game->player_count++;
-
-    return seat;
+    return add_player_at(game, socket_fd, name, seat);
 }
 
 /*

@@ -26,6 +26,7 @@
 #include <gtk/gtk.h>
 
 #include "client_state.h"
+#include "game_state.h"
 #include "socket_client.h"
 #include "poker_gui.h"
 
@@ -279,6 +280,7 @@ static void update_showdown_cards_from_state(ClientState *client, const char *sh
  * --host <server_host>
  * --port <port_number>
  * --name <player_name>
+ * --seat <seat_number>   (1-based seat selection)
  */
 static void parse_client_args(
     int argc,
@@ -287,12 +289,14 @@ static void parse_client_args(
     int host_size,
     int *port,
     char *name,
-    int name_size)
+    int name_size,
+    int *seat)
 {
-    /* Set default host, name, and port first. */
+    /* Set default host, name, port, and seat first. */
     snprintf(host, host_size, "%s", DEFAULT_HOST);
     snprintf(name, name_size, "Player");
     *port = DEFAULT_PORT;
+    *seat = -1;
 
     /* Walk through every command-line argument. */
     for (int i = 1; i < argc; i++)
@@ -313,6 +317,16 @@ static void parse_client_args(
         else if ((strcmp(argv[i], "--name") == 0 || strstr(argv[i], "name") != NULL) && i + 1 < argc)
         {
             snprintf(name, name_size, "%s", argv[++i]);
+        }
+
+        /* Read the preferred seat number. */
+        else if ((strcmp(argv[i], "--seat") == 0 || strstr(argv[i], "seat") != NULL) && i + 1 < argc)
+        {
+            int requested = atoi(argv[++i]);
+            if (requested > 0)
+                *seat = requested - 1;
+            else
+                *seat = -1;
         }
     }
 }
@@ -817,9 +831,10 @@ int main(int argc, char *argv[])
     char host[128];
     char name[CLIENT_NAME_LEN];
     int port;
+    int requested_seat;
 
     init_client_state(&g_client);
-    parse_client_args(argc, argv, host, sizeof host, &port, name, sizeof name);
+    parse_client_args(argc, argv, host, sizeof host, &port, name, sizeof name, &requested_seat);
     set_client_name(&g_client, name);
 
     /*
@@ -851,9 +866,9 @@ int main(int argc, char *argv[])
     if (bytes > 0)
         handle_server_buffer(&g_client, buffer);
 
-    // send LOGIN
+    // send LOGIN with optional requested seat
     char login_msg[CLIENT_BUFFER_SIZE];
-    snprintf(login_msg, sizeof login_msg, "LOGIN:-1:%s\n", name);
+    snprintf(login_msg, sizeof login_msg, "LOGIN:%d:%s\n", requested_seat, name);
     send_to_server(g_client.socket_fd, login_msg);
 
     // register socket with GTK so on_server_readable fires on incoming data

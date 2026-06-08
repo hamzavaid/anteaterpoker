@@ -387,17 +387,35 @@ static void handle_client_message(GameState *game, int client_fd, const char *bu
      */
     if (strcmp(msg.command, "LOGIN") == 0)
     {
-        int seat = find_seat_by_socket(game, client_fd);
-
-        if (seat < 0)
+        int existing_seat = find_seat_by_socket(game, client_fd);
+        if (existing_seat >= 0)
         {
-            send_message(client_fd, "ERROR:-1:Player not connected\n");
+            send_message(client_fd, "ERROR:-1:Already logged in\n");
             return;
         }
 
-        snprintf(game->players[seat].name, MAX_NAME_LEN, "%.*s",
-                 MAX_NAME_LEN - 1, msg.payload);
-        game->players[seat].status = PLAYER_CONNECTED;
+        if (msg.payload[0] == '\0')
+        {
+            send_message(client_fd, "ERROR:-1:Missing name\n");
+            return;
+        }
+
+        int requested_seat = msg.player_id;
+        if (requested_seat < -1 || requested_seat >= MAX_PLAYERS)
+        {
+            send_message(client_fd, "ERROR:-1:Invalid seat\n");
+            return;
+        }
+
+        int seat = add_player_at(game, client_fd, msg.payload, requested_seat);
+        if (seat < 0)
+        {
+            if (requested_seat >= 0)
+                send_message(client_fd, "ERROR:-1:Requested seat unavailable\n");
+            else
+                send_message(client_fd, "ERROR:-1:No seat available\n");
+            return;
+        }
 
         char reply[MESSAGE_BUFFER_SIZE];
         snprintf(reply, sizeof(reply), "SEAT:%d:Welcome %s\n", seat, msg.payload);
@@ -652,12 +670,6 @@ static gboolean on_client_readable(GIOChannel *channel, GIOCondition cond, gpoin
     }
 
     handle_client_message(&g_game, client_fd, buffer);
-
-    if (find_seat_by_socket(&g_game, client_fd) < 0)
-    {
-        return FALSE;
-    }
-
     return TRUE;
 }
 
@@ -680,16 +692,8 @@ static gboolean on_server_readable(GIOChannel *channel, GIOCondition cond, gpoin
     if (client_fd < 0)
         return TRUE; // accept failed, keep listening
 
-    int seat = add_player(&g_game, client_fd, "Guest");
-
-    if (seat < 0)
-    {
-        send_message(client_fd, "ERROR:-1:Seat unavailable\n");
-        close(client_fd);
-        return TRUE;
-    }
-
-    send_message(client_fd, "INFO:-1:Connected. Send LOGIN:-1:your_name\n");
+    send_message(client_fd,
+                 "INFO:-1:Connected. Send LOGIN:<seat>:your_name or LOGIN:-1:your_name\n");
 
     // register this new client socket with GTK so on_client_readable
     // fires automatically whenever it sends data

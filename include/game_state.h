@@ -90,6 +90,7 @@ void init_server_config(ServerConfig *config);
 void init_game_state(GameState *game, const ServerConfig *config, int server_fd);
 
 int find_empty_seat(const GameState *game);
+int add_player_at(GameState *game, int socket_fd, const char *name, int requested_seat);
 int add_player(GameState *game, int socket_fd, const char *name);
 void remove_player(GameState *game, int seat);
 
