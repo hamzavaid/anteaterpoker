@@ -47,6 +47,7 @@ static GtkWidget* g_comm_card_img[MAX_COMM_CARDS];
 static GtkWidget* g_my_card_img[2];
 
 static GtkWidget *g_lobby_win        = NULL;
+static GtkWidget *g_lobby_status_lbl = NULL;
 static GtkWidget *g_main_win         = NULL;
 static GtkWidget *g_lobby_list_box   = NULL;
 
