@@ -133,7 +133,6 @@ legacy-links: $(SERVER_BIN) $(CLIENT_BIN)
 
 # Required by rubric: make test should succeed cleanly.
 test: all
-	./$(TEST_DECK_BIN)
 	@echo ""
 	@echo "Deck unit test finished."
 	@echo ""
@@ -148,8 +147,12 @@ test: all
 	@echo "Manual client GUI test:"
 	@echo "  Terminal 1: ./bin/poker_server --port 10010 --table \"ZotHouse\" &"
 	@echo "  Terminal 2: ./bin/poker_client --host localhost --port 10010 --name Hamza &"
-	./$(SERVER_BIN) --port 10010 --table "ZotHouse" &
+	./$(SERVER_BIN) --port 10010 --table "ZotHouse" & \
+	sleep 1; \
+	./$(TEST_SERVER_CLIENT_BIN) & \
 	./$(CLIENT_BIN) --host localhost --port 10010 --name Test_Player &
+	./$(TEST_DECK_BIN)
+
 
 # Required by rubric: make test-gui should exist.
 test-gui: all
