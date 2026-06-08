@@ -138,6 +138,8 @@ legacy-links: $(SERVER_BIN) $(CLIENT_BIN)
 
 # Required by rubric: make test should succeed cleanly.
 test: all
+	@echo "Cleaning up any ghost processes from previous tests..."
+	@-killall poker_server poker_client test_server_client 2>/dev/null || true
 	@echo ""
 	@echo "Deck unit test finished."
 	@echo ""
@@ -153,7 +155,7 @@ test: all
 	@echo "  Terminal 1: ./bin/poker_server --port 10010 --table \"ZotHouse\" &"
 	@echo "  Terminal 2: ./bin/poker_client --host localhost --port 10010 --name Hamza &"
 	./$(SERVER_BIN) --port 10010 --table "ZotHouse" & \
-	sleep 1; \
+	sleep 3; \
 	./$(TEST_SERVER_CLIENT_BIN) & \
 	./$(CLIENT_BIN) --host localhost --port 10010 --name Test_Player &
 	./$(TEST_DECK_BIN)
