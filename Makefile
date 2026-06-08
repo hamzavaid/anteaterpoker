@@ -155,7 +155,7 @@ test: all
 	@echo "  Terminal 1: ./bin/poker_server --port 10010 --table \"ZotHouse\" &"
 	@echo "  Terminal 2: ./bin/poker_client --host localhost --port 10010 --name Hamza &"
 	./$(SERVER_BIN) --port 10010 --table "ZotHouse" & \
-	sleep 8; \
+	while ! bash -c "echo > /dev/tcp/localhost/10010" 2>/dev/null; do sleep 8; done; \
 	./$(TEST_SERVER_CLIENT_BIN) & \
 	./$(CLIENT_BIN) --host localhost --port 10010 --name Test_Player &
 	./$(TEST_DECK_BIN)
