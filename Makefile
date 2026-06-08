@@ -31,6 +31,7 @@ SERVER_DIR = $(SRC_DIR)/server
 CLIENT_DIR = $(SRC_DIR)/client
 BOT_DIR = $(SRC_DIR)/bot
 GUI_DIR = $(SRC_DIR)/gui
+BOT_BIN = $(BIN_DIR)/poker_bot
 TEST_DIR = test
 BIN_DIR = bin
 BUILD_DIR = build
@@ -116,6 +117,10 @@ $(SERVER_BIN): $(SERVER_OBJ) $(RULES_OBJ) | directories
 
 # Build client executable.
 $(CLIENT_BIN): $(CLIENT_OBJ) $(RULES_OBJ) $(BUILD_DIR)/game_state.o | directories
+	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
+
+# Build bot executable.
+$(BOT_BIN): $(BUILD_DIR)/bot.o $(BUILD_DIR)/bot_logic.o $(RULES_OBJ) | directories
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
 # Build deck unit test.
@@ -227,3 +232,4 @@ clean:
 	rm -f $(TEST_SERVER_CLIENT_BIN)
 	rm -f $(USER_ARCHIVE)
 	rm -f $(SRC_ARCHIVE)
+

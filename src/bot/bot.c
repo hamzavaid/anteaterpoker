@@ -6,17 +6,37 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <signal.h>
 
 #include "bot.h"
 
 #define BUFFER_SIZE 1024
 
+// Global variable for the socket so the signal handler can reach it
+int global_sock_fd; 
+
+// Signal handler for clean exit on Ctrl+C
+void handle_sigint(int sig) {
+    (void)sig; // Unused parameter
+    printf("\nShutdown detected . Leaving game...\n");
+    
+    // Tell the server bot is leaving so seat can be cleared
+    const char *leave_msg = "LEAVE:-1\n"; 
+    send(global_sock_fd, leave_msg, strlen(leave_msg), 0);
+    
+    close(global_sock_fd);
+    exit(EXIT_SUCCESS);
+}
+
 int main(int argc, char *argv[]) {
+    // Hook up the signal handler
+    signal(SIGINT, handle_sigint);
+
     // Basic command-line arguments for connection
-    if (argc != 3) {
-        fprintf(stderr, "Usage: %s <server_ip> <port>\n", argv[0]);
-        return EXIT_FAILURE;
-    }
+    if (argc != 4) {
+        fprintf(stderr, "Usage: %s <server_ip> <port> <bot_name>\n", argv[0]);
+    return EXIT_FAILURE;
+}
 
     const char *server_ip = argv[1];
     int port = atoi(argv[2]);
@@ -27,6 +47,9 @@ int main(int argc, char *argv[]) {
         perror("Socket creation failed");
         return EXIT_FAILURE;
     }
+    
+    // Save the socket to the global variable so the handler can use it
+    global_sock_fd = sock_fd;
 
     struct sockaddr_in server_addr;
     server_addr.sin_family = AF_INET;
@@ -50,14 +73,15 @@ int main(int argc, char *argv[]) {
     srand((unsigned)(time(NULL) ^ (uintptr_t)&state));
 
     //Send the login message to the server
-    const char *login_msg = "LOGIN:-1:AnteaterBot\n";
+    char login_msg[256];
+    snprintf(login_msg, sizeof(login_msg), "LOGIN:-1:%s\n", argv[3]);
     send(sock_fd, login_msg, strlen(login_msg), 0);
 
     // Initialize the Bot's local memory
     memset(&state, 0, sizeof(BotState));
     state.my_seat = -1; // Will be set when server confirms login
 
-    // 5. The Main Network Loop
+    // The Main Network Loop
     char buffer[BUFFER_SIZE];
     
     while (1) {
@@ -74,6 +98,13 @@ int main(int argc, char *argv[]) {
         char *line = strtok(buffer, "\n");
         while (line != NULL) {
             
+            // Check for server-initiated kick first to avoid processing any more messages after that
+            if (strncmp(line, "KICK", 4) == 0) {
+                printf("\nServer initiated kick. Shutting down gracefully...\n");
+                close(sock_fd);
+                return EXIT_SUCCESS; 
+            }
+
             // Pass every message to your parser to keep the bot's memory accurate
             bot_update_state(&state, line);
 
@@ -83,7 +114,7 @@ int main(int argc, char *argv[]) {
                 if (state.is_my_turn) {
                     printf("Bot analyzing board...\n");
                  
-                    // Ask the bot what to do
+                    // Ask bot what to do
                     const char *decision = bot_decide_action(&state);
 
                     // Format the response and send it. If raising, include amount.
