@@ -80,6 +80,9 @@ typedef struct {
 
     /* Short message describing current client status. */
     char status_message[CLIENT_STATUS_LEN];
+
+    /* 1 if this player is ready to start, 0 otherwise (lobby only). */
+    int ready;
 } ClientState;
 
 /*

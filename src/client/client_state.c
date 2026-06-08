@@ -62,6 +62,9 @@ void init_client_state(ClientState *client)
 
     /* Default status message. */
     snprintf(client->status_message, CLIENT_STATUS_LEN, "Not connected.");
+
+    /* Client starts not ready. */
+    client->ready = 0;
 }
 
 /*

@@ -277,6 +277,7 @@ static void server_auto_play_bot_turns(GameState *game)
  * Supported commands:
  *   LOGIN:-1:<name>     - add a player to the table
  *   START:-1:anything   - start a new hand
+ *   READY:-1:           - mark player as ready (in LOBBY phase)
  *   ACTN:<seat>:CHECK   - check
  *   ACTN:<seat>:CALL    - call
  *   ACTN:<seat>:FOLD    - fold
@@ -334,6 +335,63 @@ static void handle_client_message(GameState *game, int client_fd, const char *bu
         send_private_hands_to_all(game);
         server_gui_refresh();
         server_auto_play_bot_turns(game);
+        return;
+    }
+
+    /*
+     * READY command:
+     * Marks a player as ready in LOBBY phase. When all human players are ready,
+     * the server automatically starts a new hand.
+     */
+    if (strcmp(msg.command, "READY") == 0)
+    {
+        int seat = find_seat_by_socket(game, client_fd);
+
+        if (seat < 0)
+        {
+            send_message(client_fd, "ERROR:-1:Player not connected\n");
+            return;
+        }
+
+        /* Only allow READY in LOBBY phase */
+        if (game->phase != PHASE_LOBBY)
+        {
+            send_message(client_fd, "ERROR:-1:Cannot toggle ready outside lobby\n");
+            return;
+        }
+
+        /* Toggle player ready state */
+        game->players[seat].player_ready = !game->players[seat].player_ready;
+        send_message(client_fd, "OK:-1:Ready state updated\n");
+        send_public_state_to_all(game);
+        server_gui_refresh();
+
+        /* Check if all human players are ready */
+        int all_ready = 1;
+        for (int i = 0; i < MAX_PLAYERS; i++)
+        {
+            if (game->players[i].status == PLAYER_CONNECTED)
+            {
+                /* Check if this is a human player (has valid socket_fd) */
+                if (game->players[i].socket_fd != -1 && !game->players[i].player_ready)
+                {
+                    all_ready = 0;
+                    break;
+                }
+            }
+        }
+
+        /* If all humans are ready, auto-start the game */
+        if (all_ready && game->player_count > 1)
+        {
+            printf("All players ready! Auto-starting game...\n");
+            start_new_hand(game);
+            send_public_state_to_all(game);
+            send_private_hands_to_all(game);
+            server_gui_refresh();
+            server_auto_play_bot_turns(game);
+        }
+
         return;
     }
 

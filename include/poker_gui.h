@@ -1,10 +1,10 @@
 #ifndef POKER_GUI_H
 #define POKER_GUI_H
  
-// Call launch_lobby_window() before launch_poker_window() in main().
+// Call launch_lobby_window(socket_fd) before launch_poker_window() in main().
 // The lobby shows a small waiting screen while players join.
 // It closes automatically when the server transitions out of LOBBY phase.
-void launch_lobby_window(void);
+void launch_lobby_window(int server_fd);
 // Call this every time a new player joins to refresh player list
 void poker_gui_lobby_update_players(const char *player_state);
 // Call this to close lobby window
@@ -30,6 +30,7 @@ void poker_gui_set_my_seat(int seat);
 void poker_gui_set_my_turn_active(int is_active);
 void poker_gui_clear_opponents(void);
 void poker_gui_update_slot(int slot, int seat, const char *name, const char *bet_str, int is_active, int folded);
+void poker_gui_set_ready_button(int is_ready);
  
 // builds asset path: "ace_of_spades" -> "assets/ace_of_spades.png"
 void get_card_path(char *buf, int bufsize, const char *value, const char *suit);

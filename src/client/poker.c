@@ -862,7 +862,7 @@ int main(int argc, char *argv[])
     g_io_channel_unref(channel);
 
     //launches lobby for awaiting players
-    launch_lobby_window();
+    launch_lobby_window(g_client.socket_fd);
 
     // launch GUI — passes socket fd so button callbacks can send to server
     launch_poker_window(g_client.socket_fd);

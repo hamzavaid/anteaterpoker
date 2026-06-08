@@ -9,8 +9,10 @@
 #include "socket_client.h"
 #include "client_state.h"
 
-#define MAX_PLAYERS     6   // 1 local + up to 5 opponents
 #define MAX_COMM_CARDS  5
+
+// Track player ready state locally
+static int g_player_ready = 0;
 
 //these define card pixel sizes at 3 scales for GUI rendering (small, medium, large)
 #define CARD_W_SM       32
@@ -37,6 +39,7 @@ static GtkWidget* g_raise_input = NULL;
 static GtkWidget* g_ability_target_input = NULL;
 static GtkWidget* g_ability_param_input = NULL;
 static GtkWidget* g_ability_label = NULL;
+static GtkWidget* g_ready_button = NULL;
 
 static GtkWidget* g_action_card_image  = NULL;
 static GtkWidget* g_action_card_desc   = NULL;
@@ -416,7 +419,7 @@ void poker_gui_close_lobby(void)
     if (g_lobby_win != NULL)
     {
         gtk_widget_hide(g_lobby_win);
-        gtk_widget_destroy(g_lobby_win);
+        /* Just hide it, don't destroy. This prevents triggering the delete-event signal. */
         g_lobby_win        = NULL;
         g_lobby_list_box   = NULL;
     }
@@ -634,6 +637,36 @@ void poker_gui_set_my_turn_active(int is_active)
     gtk_widget_set_name(
         g_my_avatar_box,
         is_active ? "avatar_box_active" : "avatar_box");
+}
+
+/*
+ * Callback for ready button click.
+ * Toggles ready state, sends READY message to server, and updates button display.
+ */
+static void on_ready_button_clicked(GtkButton *button, gpointer user_data)
+{
+    (void)button;
+
+    int socket_fd = GPOINTER_TO_INT(user_data);
+    if (socket_fd < 0) return;
+
+    /* Toggle ready state */
+    g_player_ready = !g_player_ready;
+
+    /* Update button display */
+    poker_gui_set_ready_button(g_player_ready);
+
+    /* Send READY message to server */
+    char ready_msg[64];
+    snprintf(ready_msg, sizeof ready_msg, "READY:-1:\n");
+    send_to_server(socket_fd, ready_msg);
+}
+
+void poker_gui_set_ready_button(int is_ready)
+{
+    if (!g_ready_button) return;
+    gtk_button_set_label(GTK_BUTTON(g_ready_button), is_ready ? "Ready" : "Not Ready");
+    gtk_widget_set_name(g_ready_button, is_ready ? "ready_button_ready" : "ready_button_notready");
 }
 
 //Update opponent slot display (name, bet, active, folded status)
@@ -1153,7 +1186,7 @@ static GtkWidget* build_center_panel(void)
     return vbox;
 }
 
-void launch_lobby_window(void)
+void launch_lobby_window(int server_fd)
 {
     GtkCssProvider *css = gtk_css_provider_new();
     gtk_css_provider_load_from_data(css, LOBBY_CSS, -1, NULL);
@@ -1169,8 +1202,8 @@ void launch_lobby_window(void)
     gtk_window_set_default_size(GTK_WINDOW(g_lobby_win), 380, 420);
     gtk_window_set_resizable(GTK_WINDOW(g_lobby_win), FALSE);
     gtk_window_set_position(GTK_WINDOW(g_lobby_win), GTK_WIN_POS_CENTER);
-    // closing the lobby window quits the whole app
-    g_signal_connect(g_lobby_win, "destroy", G_CALLBACK(gtk_main_quit), NULL);
+    // Quitting will happen via delete-event or manual exit, not lobby destroy
+    g_signal_connect(g_lobby_win, "delete-event", G_CALLBACK(gtk_main_quit), NULL);
     gtk_container_set_border_width(GTK_CONTAINER(g_lobby_win), 18);
 
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
@@ -1202,11 +1235,17 @@ void launch_lobby_window(void)
     gtk_container_set_border_width(GTK_CONTAINER(g_lobby_list_box), 4);
     gtk_container_add(GTK_CONTAINER(list_frame), g_lobby_list_box);
 
-    GtkWidget *hint = gtk_label_new("The host will start the game when everyone has joined.");
+    GtkWidget *hint = gtk_label_new("The game will start when all players are ready.");
     gtk_label_set_line_wrap(GTK_LABEL(hint), TRUE);
     gtk_label_set_justify(GTK_LABEL(hint), GTK_JUSTIFY_CENTER);
     gtk_widget_set_name(hint, "lobby_empty_slot");
     gtk_box_pack_end(GTK_BOX(vbox), hint, FALSE, FALSE, 4);
+
+    /* Add ready button */
+    g_ready_button = gtk_button_new_with_label("Not Ready");
+    gtk_widget_set_name(g_ready_button, "ready_button_notready");
+    g_signal_connect(g_ready_button, "clicked", G_CALLBACK(on_ready_button_clicked), GINT_TO_POINTER(server_fd));
+    gtk_box_pack_end(GTK_BOX(vbox), g_ready_button, FALSE, FALSE, 4);
 
     gtk_widget_show_all(g_lobby_win);
 }

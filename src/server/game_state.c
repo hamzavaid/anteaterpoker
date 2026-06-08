@@ -180,6 +180,8 @@ int add_player(GameState *game, int socket_fd, const char *name)
     snprintf(player->name, MAX_NAME_LEN, "%s", name);
     player->points = game->config.starting_points;
     player->current_bet = 0;
+    player->total_bet = 0;
+    player->player_ready = 0;
     player->status = PLAYER_CONNECTED;
 
     /* Player has no ability until a hand starts. */

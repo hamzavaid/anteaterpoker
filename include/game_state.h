@@ -53,6 +53,7 @@ typedef struct {
     int points;
     int current_bet;
     int total_bet;
+    int player_ready;
     Card hand[PRIVATE_HAND_SIZE];
     AbilityCard ability;
     PlayerStatus status;
