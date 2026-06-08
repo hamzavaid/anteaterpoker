@@ -33,6 +33,11 @@
 
 // global variable for GTK
 static GameState g_game;
+static unsigned int g_autostart_source_id = 0;
+
+/* Forward declarations for autostart helpers (defined below). */
+void schedule_autostart(GameState *game);
+void cancel_autostart(GameState *game);
 
 /*
  * parse_server_args
@@ -270,6 +275,49 @@ static void server_auto_play_bot_turns(GameState *game)
 }
 
 /*
+ * server_autostart_cb
+ *
+ * Called by GLib when the autostart timeout fires. Starts a new hand.
+ */
+static gboolean server_autostart_cb(gpointer data)
+{
+    GameState *game = (GameState *)data;
+    if (!game) return FALSE;
+    
+    /* Clear stored source id */
+    g_autostart_source_id = 0;
+
+    printf("[SERVER] Auto-start timeout fired: starting new hand\n");
+    start_new_hand(game);
+    send_public_state_to_all(game);
+    send_private_hands_to_all(game);
+    server_gui_refresh();
+    server_auto_play_bot_turns(game);
+
+    return FALSE; /* one-shot */
+}
+
+/* Schedule an auto-start in 3 seconds if not already scheduled. */
+void schedule_autostart(GameState *game)
+{
+    if (!game) return;
+    if (g_autostart_source_id != 0) return; /* already scheduled */
+    unsigned int sid = g_timeout_add_seconds(3, server_autostart_cb, game);
+    g_autostart_source_id = sid;
+    printf("[SERVER] Scheduled auto-start in 3s (source id %u)\n", sid);
+}
+
+/* Cancel a previously scheduled auto-start, if any. */
+void cancel_autostart(GameState *game)
+{
+    if (!game) return;
+    if (g_autostart_source_id == 0) return;
+    g_source_remove(g_autostart_source_id);
+    g_autostart_source_id = 0;
+    printf("[SERVER] Cancelled scheduled auto-start\n");
+}
+
+/*
  * handle_client_message
  *
  * Processes one message received from a client.
@@ -330,6 +378,7 @@ static void handle_client_message(GameState *game, int client_fd, const char *bu
      */
     if (strcmp(msg.command, "START") == 0)
     {
+        cancel_autostart(game);
         start_new_hand(game);
         send_public_state_to_all(game);
         send_private_hands_to_all(game);
@@ -381,15 +430,20 @@ static void handle_client_message(GameState *game, int client_fd, const char *bu
             }
         }
 
-        /* If all humans are ready, auto-start the game */
+        /* If all humans are ready, schedule auto-start after short delay. */
         if (all_ready && game->player_count > 1)
         {
-            printf("All players ready! Auto-starting game...\n");
+            cancel_autostart(game); /* Safety catch just in case */
             start_new_hand(game);
             send_public_state_to_all(game);
             send_private_hands_to_all(game);
             server_gui_refresh();
             server_auto_play_bot_turns(game);
+        }
+        else
+        {
+            /* Not all ready — cancel any scheduled auto-start */
+            cancel_autostart(game);
         }
 
         return;
@@ -421,6 +475,10 @@ static void handle_client_message(GameState *game, int client_fd, const char *bu
         {
             send_message(client_fd, "ERROR:-1:Illegal action\n");
             return;
+        }
+
+        if (game->phase == PHASE_GAME_OVER) {
+            schedule_autostart(game);
         }
 
         send_message(client_fd, "OK:-1:Action accepted\n");

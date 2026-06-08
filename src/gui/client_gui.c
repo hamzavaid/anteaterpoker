@@ -32,6 +32,7 @@ static GtkWidget* g_winner_label = NULL;
 static GtkWidget* g_pot_label = NULL;
 static GtkWidget* g_side_pot_label = NULL;
 static GtkWidget* g_stack_label = NULL;
+static GtkWidget* g_stack_label_right = NULL;
 static GtkWidget* g_my_avatar_box = NULL;
 static int g_my_seat = -1;
 static char g_my_name_text[CLIENT_NAME_LEN] = "";
@@ -492,9 +493,17 @@ void poker_gui_set_side_pot(int amount)
 void poker_gui_set_stack(int amount)
 {
     if (!g_stack_label) return;
+    
     char buf[64];
     snprintf(buf, sizeof buf, "Points: %d", amount);
-    gtk_label_set_text(GTK_LABEL(g_stack_label), buf);
+    
+    if (g_stack_label) {
+        gtk_label_set_text(GTK_LABEL(g_stack_label), buf);
+    }
+    
+    if (g_stack_label_right) {
+        gtk_label_set_text(GTK_LABEL(g_stack_label_right), buf);
+    }
 }
 
 void poker_gui_set_status(const char* msg)
@@ -961,9 +970,9 @@ static GtkWidget* build_right_panel(void)
         gtk_widget_set_name(lbl, "side_label");
         gtk_box_pack_start(GTK_BOX(inner), lbl, FALSE, FALSE, 0);
 
-        g_stack_label = gtk_label_new("Points: 0");
-        gtk_widget_set_name(g_stack_label, "stack_text");
-        gtk_box_pack_start(GTK_BOX(inner), g_stack_label, FALSE, FALSE, 0);
+        g_stack_label_right = gtk_label_new("Points: 0");
+        gtk_widget_set_name(g_stack_label_right, "stack_text");
+        gtk_box_pack_start(GTK_BOX(inner), g_stack_label_right, FALSE, FALSE, 0);
 
         g_ability_label = gtk_label_new("Ability: NONE");
         gtk_widget_set_name(g_ability_label, "stack_text");
