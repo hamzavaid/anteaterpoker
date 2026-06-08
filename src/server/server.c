@@ -527,6 +527,13 @@ static void handle_client_message(GameState *game, int client_fd, const char *bu
             return;
         }
 
+        if (strcmp(msg.payload, "CHECK") == 0) {
+            if (game->players[seat].current_bet < game->current_bet) {
+                send_message(client_fd, "ERROR:-1:Cannot check; you must call or raise\n");
+                return;
+            }
+        }
+
         if (!poker_apply_action(game, seat, msg.payload, 0))
         {
             send_message(client_fd, "ERROR:-1:Illegal action\n");
@@ -560,6 +567,12 @@ static void handle_client_message(GameState *game, int client_fd, const char *bu
         if (seat < 0)
         {
             send_message(client_fd, "ERROR:-1:Player not logged in\n");
+            return;
+        }
+
+        if (seat != game->current_turn)
+        {
+            send_message(client_fd, "ERROR:-1:Not your turn\n");
             return;
         }
 

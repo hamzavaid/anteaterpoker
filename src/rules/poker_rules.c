@@ -186,6 +186,22 @@ void poker_advance_phase(GameState *game)
         return;
     }
 
+    // Count how many active players still have chips to bet
+    int players_with_chips = 0;
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        if (game->players[i].status == PLAYER_ACTIVE && game->players[i].points > 0) {
+            players_with_chips++;
+        }
+    }
+
+    /* If 1 or 0 players have chips, no more betting can occur. 
+    this means we can skip to showdown */
+    if (players_with_chips <= 1) {
+        poker_advance_phase(game); 
+        return;
+    }
+
+    // Otherwise, normal play continues
     game->current_turn = poker_get_first_active_player(game);
 }
 
